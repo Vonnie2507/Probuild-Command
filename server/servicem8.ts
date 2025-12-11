@@ -486,12 +486,19 @@ export class ServiceM8Client {
   } {
     const statusLower = sm8Status.toLowerCase();
     
+    // First check for terminal/closed statuses (these should be excluded from active pipelines)
+    if (statusLower.includes('unsuccessful') || statusLower.includes('lost') || statusLower.includes('cancelled') || statusLower.includes('canceled')) {
+      return { lifecyclePhase: 'quote', schedulerStage: 'new_jobs_won', appStatus: 'unsuccessful' };
+    }
+    
+    // Check for completed jobs
+    if (statusLower.includes('complete') || statusLower.includes('finished') || statusLower.includes('done')) {
+      return { lifecyclePhase: 'work_order', schedulerStage: 'recently_completed', appStatus: 'complete' };
+    }
+    
     // Check if it's a Work Order status
     if (WORK_ORDER_STATUSES.some(s => statusLower.includes(s.toLowerCase()))) {
       // Map to specific scheduler stages
-      if (statusLower.includes('complete')) {
-        return { lifecyclePhase: 'work_order', schedulerStage: 'recently_completed', appStatus: 'complete' };
-      }
       if (statusLower.includes('progress') || statusLower.includes('production')) {
         return { lifecyclePhase: 'work_order', schedulerStage: 'in_production', appStatus: 'in_production' };
       }
