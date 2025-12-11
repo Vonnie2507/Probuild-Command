@@ -782,14 +782,23 @@ export class ServiceM8Client {
     // - Terminal statuses (unsuccessful/complete) keep their status and are excluded
     let salesStage: string | null = null;
     
+    // Parse badges early so we can use them for routing
+    const parsedBadges = this.parseBadges(sm8Job.badges, badgeDefinitions);
+    const hasHotLeadBadge = parsedBadges.some(b => 
+      b.toLowerCase().includes('hot lead') || b.toLowerCase() === 'hot'
+    );
+    
     if (lifecyclePhase === 'quote' && appStatus !== 'unsuccessful') {
       if (hasQuoteSent) {
         // Quote jobs don't need a scheduler stage - they're in sales pipelines
         schedulerStage = null;
         // For Leads Pipeline: set status to quote_sent
         appStatus = 'quote_sent';
-        // For Quotes Pipeline: set salesStage based on days since quote was sent
-        if (daysSinceQuoteSent !== null && daysSinceQuoteSent <= 3) {
+        
+        // For Quotes Pipeline: check for Hot Lead badge FIRST, then use recency
+        if (hasHotLeadBadge) {
+          salesStage = 'hot';  // Route to Hot Lead column
+        } else if (daysSinceQuoteSent !== null && daysSinceQuoteSent <= 3) {
           salesStage = 'fresh';  // Fresh (0-3 Days)
         } else {
           salesStage = 'awaiting_reply';  // Awaiting Reply (4+ days)
@@ -828,7 +837,7 @@ export class ServiceM8Client {
       panelInstallDuration: 8,
       panelInstallCrewSize: 2,
       syncedAt: new Date(),
-      badges: this.parseBadges(sm8Job.badges, badgeDefinitions),
+      badges: parsedBadges,
     };
   }
 
