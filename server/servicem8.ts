@@ -414,22 +414,20 @@ export class ServiceM8Client {
       ? this.getStaffAssigned(sm8Job.uuid, customFieldMap) 
       : "Unassigned";
 
-    // Calculate days since quote was sent
+    // Calculate days since quote was ACTUALLY SENT (not created)
     let daysSinceQuoteSent: number | null = null;
-    // ServiceM8 uses quote_sent_stamp for the actual timestamp when quote was emailed
-    // quote_sent is just a boolean, quote_date is when quote was created
+    // ServiceM8 fields:
+    // - quote_sent: boolean flag indicating if quote was sent
+    // - quote_sent_stamp: actual timestamp when quote was emailed (THIS is what we want)
+    // - quote_date: when the quote was CREATED (NOT when it was sent - do NOT use this)
     const quoteSentStamp = sm8Job.quote_sent_stamp ? String(sm8Job.quote_sent_stamp).trim() : '';
-    const quoteDateValue = sm8Job.quote_date ? String(sm8Job.quote_date).trim() : '';
     const hasQuoteSent = sm8Job.quote_sent === true;
     
-    // Prefer quote_sent_stamp (when actually sent), fallback to quote_date (when created)
-    const quoteTimestamp = (quoteSentStamp && quoteSentStamp !== '' && quoteSentStamp !== '0000-00-00 00:00:00')
-      ? quoteSentStamp 
-      : (quoteDateValue && quoteDateValue !== '' && quoteDateValue !== '0000-00-00 00:00:00' ? quoteDateValue : '');
-    
-    if (quoteTimestamp) {
+    // ONLY calculate days since quote sent if we have an actual sent timestamp
+    // Do NOT fall back to quote_date - that's just creation date
+    if (hasQuoteSent && quoteSentStamp && quoteSentStamp !== '' && quoteSentStamp !== '0000-00-00 00:00:00') {
       try {
-        const quoteSentDate = new Date(quoteTimestamp.replace(' ', 'T'));
+        const quoteSentDate = new Date(quoteSentStamp.replace(' ', 'T'));
         if (!isNaN(quoteSentDate.getTime())) {
           const now = new Date();
           const diffTime = now.getTime() - quoteSentDate.getTime();
