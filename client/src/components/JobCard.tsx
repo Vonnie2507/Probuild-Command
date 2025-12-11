@@ -12,8 +12,11 @@ interface JobCardProps {
 }
 
 export function JobCard({ job, index }: JobCardProps) {
-  // Quote phase jobs are always orange, Work Order phase jobs are blue
+  // Completed jobs are green, Quote phase jobs are orange, Work Order phase jobs are blue
   const getLifecycleColor = () => {
+    if (job.status === 'complete') {
+      return "border-l-green-500 bg-green-50/50";
+    }
     if (job.lifecyclePhase === 'quote') {
       return "border-l-orange-500 bg-orange-50/50";
     }
