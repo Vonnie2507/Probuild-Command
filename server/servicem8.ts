@@ -144,9 +144,9 @@ export class ServiceM8Client {
     // Determine lifecycle phase and scheduler stage based on ServiceM8 status
     const { lifecyclePhase, schedulerStage, appStatus } = this.mapServiceM8Status(sm8Job.status);
 
-    // Get staff assigned from ServiceM8 custom field
-    // The custom field "Staff Assigned" is returned as "staff_assigned" in the API
-    const staffAssigned = sm8Job.staff_assigned || sm8Job.Staff_Assigned || sm8Job['Staff Assigned'] || "Unassigned";
+    // Get staff assigned from ServiceM8 custom field "Staff Assigned"
+    // The field_name from ServiceM8 custom_fields API is "Staff Assigned" (with space)
+    const staffAssigned = sm8Job['Staff Assigned'] || sm8Job.staff_assigned || "Unassigned";
 
     return {
       serviceM8Uuid: sm8Job.uuid,
