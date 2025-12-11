@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes, startAutoSync } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { seedWorkTypes } from "./seed";
 
 const app = express();
 const httpServer = createServer(app);
@@ -91,8 +92,15 @@ app.use((req, res, next) => {
       host: "0.0.0.0",
       reusePort: true,
     },
-    () => {
+    async () => {
       log(`serving on port ${port}`);
+      // Seed work types and stages on startup
+      try {
+        await seedWorkTypes();
+        log("Work types seeded successfully");
+      } catch (err) {
+        log(`Work types seed error: ${err}`);
+      }
       // Start automatic ServiceM8 sync every 15 minutes
       startAutoSync(15);
     },
