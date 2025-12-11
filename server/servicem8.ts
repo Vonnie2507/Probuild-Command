@@ -274,8 +274,6 @@ export class ServiceM8Client {
     const quoteValue = parseFloat(sm8Job.total_invoice_amount) || 0;
     
     // Determine lifecycle phase and scheduler stage based on ServiceM8 status
-    const { lifecyclePhase, schedulerStage, appStatus } = this.mapServiceM8Status(sm8Job.status);
-
     // Get staff assigned from custom fields map (custom fields are stored separately in ServiceM8)
     const staffAssigned = customFieldMap 
       ? this.getStaffAssigned(sm8Job.uuid, customFieldMap) 
@@ -287,6 +285,7 @@ export class ServiceM8Client {
     // quote_sent is just a boolean, quote_date is when quote was created
     const quoteSentStamp = sm8Job.quote_sent_stamp ? String(sm8Job.quote_sent_stamp).trim() : '';
     const quoteDateValue = sm8Job.quote_date ? String(sm8Job.quote_date).trim() : '';
+    const hasQuoteSent = sm8Job.quote_sent === true;
     
     // Prefer quote_sent_stamp (when actually sent), fallback to quote_date (when created)
     const quoteTimestamp = (quoteSentStamp && quoteSentStamp !== '' && quoteSentStamp !== '0000-00-00 00:00:00')
@@ -304,6 +303,17 @@ export class ServiceM8Client {
       } catch (e) {
         // Invalid date format, keep as null
       }
+    }
+
+    // Get base status mapping from ServiceM8 status
+    let { lifecyclePhase, schedulerStage, appStatus } = this.mapServiceM8Status(sm8Job.status);
+    
+    // Override schedulerStage based on quote_sent flag:
+    // - If quote_sent is true and still in quote phase → "quotes_sent"
+    // - If it's a work order → "new_jobs_won" (quote was won)
+    if (lifecyclePhase === 'quote' && hasQuoteSent) {
+      schedulerStage = 'quotes_sent';
+      appStatus = 'quote_sent';
     }
 
     return {
