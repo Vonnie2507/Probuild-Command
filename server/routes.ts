@@ -390,12 +390,24 @@ export async function registerRoutes(
       }
 
       const tokenData = await tokenResponse.json();
-      console.log("OAuth token received successfully");
+      console.log("OAuth token received:", JSON.stringify({
+        hasAccessToken: !!tokenData.access_token,
+        hasRefreshToken: !!tokenData.refresh_token,
+        expiresIn: tokenData.expires_in,
+        error: tokenData.error,
+        errorDescription: tokenData.error_description
+      }));
+
+      if (!tokenData.access_token) {
+        console.error("No access token in response:", tokenData);
+        return res.redirect("/?oauth_error=no_access_token");
+      }
 
       const expiresAt = tokenData.expires_in 
         ? new Date(Date.now() + tokenData.expires_in * 1000)
         : null;
 
+      console.log("Saving OAuth token to database...");
       await storage.saveOAuthToken({
         provider: "servicem8",
         accessToken: tokenData.access_token,
@@ -403,6 +415,7 @@ export async function registerRoutes(
         expiresAt: expiresAt,
         scope: SM8_OAUTH_CONFIG.scopes,
       });
+      console.log("OAuth token saved successfully!");
 
       res.redirect("/?oauth_success=true");
     } catch (error) {
