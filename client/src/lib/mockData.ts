@@ -24,6 +24,7 @@ export interface Job {
   lifecyclePhase: LifecyclePhase; // 'quote' (orange) or 'work_order' (blue)
   schedulerStage: SchedulerStage; // Kanban column for work orders
   daysSinceQuoteSent?: number;
+  hoursSinceQuoteSent?: number; // For quotes sent < 24 hours ago
   daysSinceLastContact: number;
   assignedStaff: string;
   lastNote: string;

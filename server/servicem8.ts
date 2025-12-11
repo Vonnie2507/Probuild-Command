@@ -414,8 +414,9 @@ export class ServiceM8Client {
       ? this.getStaffAssigned(sm8Job.uuid, customFieldMap) 
       : "Unassigned";
 
-    // Calculate days since quote was ACTUALLY SENT (not created)
+    // Calculate time since quote was ACTUALLY SENT (not created)
     let daysSinceQuoteSent: number | null = null;
+    let hoursSinceQuoteSent: number | null = null;
     // ServiceM8 fields:
     // - quote_sent: boolean flag indicating if quote was sent
     // - quote_sent_stamp: actual timestamp when quote was emailed (THIS is what we want)
@@ -423,7 +424,7 @@ export class ServiceM8Client {
     const quoteSentStamp = sm8Job.quote_sent_stamp ? String(sm8Job.quote_sent_stamp).trim() : '';
     const hasQuoteSent = sm8Job.quote_sent === true;
     
-    // ONLY calculate days since quote sent if we have an actual sent timestamp
+    // ONLY calculate time since quote sent if we have an actual sent timestamp
     // Do NOT fall back to quote_date - that's just creation date
     if (hasQuoteSent && quoteSentStamp && quoteSentStamp !== '' && quoteSentStamp !== '0000-00-00 00:00:00') {
       try {
@@ -431,7 +432,17 @@ export class ServiceM8Client {
         if (!isNaN(quoteSentDate.getTime())) {
           const now = new Date();
           const diffTime = now.getTime() - quoteSentDate.getTime();
-          daysSinceQuoteSent = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+          const totalHours = Math.floor(diffTime / (1000 * 60 * 60));
+          
+          if (totalHours < 24) {
+            // Less than 24 hours - store hours
+            hoursSinceQuoteSent = totalHours;
+            daysSinceQuoteSent = 0;
+          } else {
+            // 24+ hours - store days
+            daysSinceQuoteSent = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            hoursSinceQuoteSent = null;
+          }
         }
       } catch (e) {
         // Invalid date format, keep as null
@@ -473,6 +484,7 @@ export class ServiceM8Client {
       lifecyclePhase: lifecyclePhase,
       schedulerStage: schedulerStage,
       daysSinceQuoteSent: daysSinceQuoteSent,
+      hoursSinceQuoteSent: hoursSinceQuoteSent,
       daysSinceLastContact: 0,
       assignedStaff: staffAssigned,
       lastNote: sm8Job.work_done_description || "",
