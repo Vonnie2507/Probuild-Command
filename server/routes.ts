@@ -487,6 +487,69 @@ export async function registerRoutes(
     }
   });
 
+  // Get company info for a specific job
+  app.get("/api/servicem8/job-company/:jobUuid", async (req, res) => {
+    try {
+      const { jobUuid } = req.params;
+      
+      const token = await getValidOAuthToken();
+      if (!token) {
+        return res.status(401).json({ error: "ServiceM8 not connected" });
+      }
+
+      const baseUrl = "https://api.servicem8.com/api_1.0";
+      const headers = {
+        "Authorization": `Bearer ${token.accessToken}`,
+        "Accept": "application/json",
+      };
+
+      // First get the job to find company_uuid
+      const jobResponse = await fetch(`${baseUrl}/job/${jobUuid}.json`, { headers });
+      if (!jobResponse.ok) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+      const job = await jobResponse.json();
+      const companyUuid = job.company_uuid;
+
+      if (!companyUuid) {
+        return res.json({
+          companyName: "Unknown Customer",
+          companyEmail: "",
+          companyPhone: "",
+          companyMobile: "",
+          contacts: [],
+        });
+      }
+
+      // Fetch company and contacts in parallel
+      const [companyResponse, contactsResponse] = await Promise.all([
+        fetch(`${baseUrl}/company/${companyUuid}.json`, { headers }),
+        fetch(`${baseUrl}/companycontact.json?%24filter=company_uuid%20eq%20'${companyUuid}'`, { headers }),
+      ]);
+
+      const company = companyResponse.ok ? await companyResponse.json() : null;
+      const contacts = contactsResponse.ok ? await contactsResponse.json() : [];
+
+      res.json({
+        companyName: company?.name || company?.company_name || "Unknown Customer",
+        companyEmail: company?.email || "",
+        companyPhone: company?.phone || "",
+        companyMobile: company?.mobile || "",
+        contacts: contacts.map((c: any) => ({
+          uuid: c.uuid || "",
+          name: [c.first, c.last].filter(Boolean).join(" ") || "Unknown",
+          email: c.email || "",
+          mobile: c.mobile || "",
+          phone: c.phone || "",
+          isPrimary: c.is_primary === 1 || c.is_primary === true,
+        })),
+      });
+    } catch (error: any) {
+      console.error("Error fetching job company:", error);
+      res.status(500).json({ error: "Failed to fetch company info" });
+    }
+  });
+
   // ============ ServiceM8 OAuth 2.0 Routes ============
 
   // Get OAuth status (check if we have a valid token)

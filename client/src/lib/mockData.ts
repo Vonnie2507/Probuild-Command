@@ -3,6 +3,15 @@ import { addDays, subDays } from "date-fns";
 export type LifecyclePhase = 'quote' | 'work_order';
 export type SchedulerStage = 'new_jobs_won' | 'in_production' | 'waiting_supplier' | 'waiting_client' | 'need_to_go_back' | 'recently_completed';
 
+export interface JobContact {
+  uuid: string;
+  name: string;
+  email: string;
+  mobile: string;
+  phone: string;
+  isPrimary: boolean;
+}
+
 export interface Job {
   id: string;
   jobId: string; // ServiceM8 ID like #1042
@@ -46,6 +55,14 @@ export interface Job {
   // Communication tracking
   lastCommunicationDate?: Date;
   lastCommunicationType?: 'email' | 'sms' | 'call' | 'note';
+  
+  // Company contact info (enriched from ServiceM8)
+  companyUuid?: string;
+  companyName?: string;
+  companyEmail?: string;
+  companyPhone?: string;
+  companyMobile?: string;
+  contacts?: JobContact[];
 }
 
 // Scheduler Kanban columns for work orders

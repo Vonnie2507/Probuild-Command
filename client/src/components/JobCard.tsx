@@ -50,11 +50,31 @@ interface JobCardProps {
   index: number;
 }
 
+interface CompanyInfo {
+  companyName: string;
+  companyEmail: string;
+  companyPhone: string;
+  companyMobile: string;
+  contacts: Array<{
+    uuid: string;
+    name: string;
+    email: string;
+    mobile: string;
+    phone: string;
+    isPrimary: boolean;
+  }>;
+}
+
 export function JobCard({ job, index }: JobCardProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [communications, setCommunications] = useState<CommunicationItem[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
+  
+  // Company info state
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
+  const [loadingCompanyInfo, setLoadingCompanyInfo] = useState(false);
+  const [companyInfoError, setCompanyInfoError] = useState<string | null>(null);
   
   // SMS compose state
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
@@ -123,6 +143,26 @@ export function JobCard({ job, index }: JobCardProps) {
           setNotesError(err.message || "Failed to load communication history");
         })
         .finally(() => setLoadingNotes(false));
+        
+      // Also fetch company info
+      setLoadingCompanyInfo(true);
+      setCompanyInfoError(null);
+      fetch(`/api/servicem8/job-company/${job.serviceM8Uuid}`)
+        .then(async res => {
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || "Failed to fetch company info");
+          }
+          return res.json();
+        })
+        .then(data => {
+          setCompanyInfo(data);
+        })
+        .catch(err => {
+          console.error("Failed to fetch company info:", err);
+          setCompanyInfoError(err.message || "Could not load company contacts");
+        })
+        .finally(() => setLoadingCompanyInfo(false));
     }
   }, [detailsOpen, job.serviceM8Uuid]);
 
@@ -432,6 +472,102 @@ export function JobCard({ job, index }: JobCardProps) {
               </div>
               <p className="text-lg font-bold text-primary">${job.quoteValue.toLocaleString()}</p>
             </div>
+          </div>
+          
+          <Separator />
+          
+          {/* Company Contact Info */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <User className="h-4 w-4" />
+                <span>Company Contacts</span>
+              </div>
+              {loadingCompanyInfo && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+            
+            {loadingCompanyInfo ? (
+              <div className="flex items-center justify-center bg-muted/30 rounded-md p-4">
+                <Loader2 className="h-4 w-4 animate-spin mr-2 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Loading company contacts...</span>
+              </div>
+            ) : companyInfoError ? (
+              <div className="flex flex-col items-center justify-center bg-muted/30 rounded-md p-3 text-center">
+                <AlertCircle className="h-5 w-5 text-amber-500 mb-2" />
+                <p className="text-sm text-amber-600 font-medium">{companyInfoError}</p>
+                <p className="text-xs text-muted-foreground mt-1">Please reconnect to ServiceM8 in Settings</p>
+              </div>
+            ) : companyInfo ? (
+              <div className="bg-muted/30 rounded-md p-3 space-y-3">
+                {/* Company Info */}
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  {companyInfo.companyEmail && (
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                      <a href={`mailto:${companyInfo.companyEmail}`} className="text-primary hover:underline truncate">
+                        {companyInfo.companyEmail}
+                      </a>
+                    </div>
+                  )}
+                  {companyInfo.companyPhone && (
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                      <a href={`tel:${companyInfo.companyPhone}`} className="hover:underline">
+                        {companyInfo.companyPhone}
+                      </a>
+                    </div>
+                  )}
+                  {companyInfo.companyMobile && (
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                      <a href={`tel:${companyInfo.companyMobile}`} className="hover:underline">
+                        {companyInfo.companyMobile}
+                      </a>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Contact List */}
+                {companyInfo.contacts.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t">
+                    <span className="text-xs font-medium text-muted-foreground">Contacts</span>
+                    {companyInfo.contacts.map((contact) => (
+                      <div key={contact.uuid} className="flex items-center justify-between text-sm bg-white/50 rounded px-2 py-1.5">
+                        <div className="flex items-center gap-2">
+                          <User className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="font-medium">{contact.name}</span>
+                          {contact.isPrimary && (
+                            <Badge variant="secondary" className="text-[10px] px-1 py-0">Primary</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          {contact.mobile && (
+                            <a href={`tel:${contact.mobile}`} className="hover:text-primary flex items-center gap-1">
+                              <Phone className="h-3 w-3" />
+                              {contact.mobile}
+                            </a>
+                          )}
+                          {contact.email && (
+                            <a href={`mailto:${contact.email}`} className="hover:text-primary flex items-center gap-1">
+                              <Mail className="h-3 w-3" />
+                              {contact.email}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {!companyInfo.companyEmail && !companyInfo.companyPhone && !companyInfo.companyMobile && companyInfo.contacts.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No contact information available</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground bg-muted/30 rounded-md p-3">
+                {job.serviceM8Uuid ? "No company contact information found" : "Job not linked to ServiceM8"}
+              </p>
+            )}
           </div>
           
           <Separator />
