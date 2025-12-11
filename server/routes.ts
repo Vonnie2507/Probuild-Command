@@ -204,14 +204,18 @@ export async function registerRoutes(
           
           const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName, customFieldMap);
           
-          // Add communication history from notes
+          // Add communication history from email/SMS only
           const lastComm = notesMap.get(sm8Job.uuid);
           if (lastComm) {
             (mappedJob as any).lastCommunicationDate = lastComm.date;
             (mappedJob as any).lastCommunicationType = lastComm.type;
-            // Also update daysSinceLastContact based on communication
             const daysSince = Math.floor((Date.now() - lastComm.date.getTime()) / (1000 * 60 * 60 * 24));
             mappedJob.daysSinceLastContact = daysSince;
+          } else {
+            // Clear old communication data if no email/SMS found
+            (mappedJob as any).lastCommunicationDate = null;
+            (mappedJob as any).lastCommunicationType = null;
+            mappedJob.daysSinceLastContact = null;
           }
           
           await storage.upsertJobByServiceM8Uuid(mappedJob);
@@ -1246,13 +1250,18 @@ async function runAutoSync() {
         
         const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName, customFieldMap);
         
-        // Add communication history from notes
+        // Add communication history from email/SMS only
         const lastComm = notesMap.get(sm8Job.uuid);
         if (lastComm) {
           (mappedJob as any).lastCommunicationDate = lastComm.date;
           (mappedJob as any).lastCommunicationType = lastComm.type;
           const daysSince = Math.floor((Date.now() - lastComm.date.getTime()) / (1000 * 60 * 60 * 24));
           mappedJob.daysSinceLastContact = daysSince;
+        } else {
+          // Clear old communication data if no email/SMS found
+          (mappedJob as any).lastCommunicationDate = null;
+          (mappedJob as any).lastCommunicationType = null;
+          mappedJob.daysSinceLastContact = null;
         }
         
         await storage.upsertJobByServiceM8Uuid(mappedJob);

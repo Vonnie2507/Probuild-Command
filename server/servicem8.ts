@@ -250,9 +250,70 @@ export class ServiceM8Client {
     return contactMap;
   }
 
-  // Fetch all job notes/diary entries for communication history
+  // Fetch last sent email/SMS for each job from activity feed
   async fetchAllJobNotes(): Promise<Map<string, { date: Date; type: string; note: string }>> {
-    const notesMap = new Map<string, { date: Date; type: string; note: string }>();
+    const commMap = new Map<string, { date: Date; type: string; note: string }>();
+    try {
+      // Fetch activity/feed for sent messages - ServiceM8 uses feeditem for activity
+      const response = await fetch(`${this.baseUrl}/feeditem.json?%24top=5000&%24orderby=timestamp%20desc`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) {
+        console.log("[Comms] Failed to fetch feed items:", response.status);
+        // Fall back to notes API
+        return this.fetchJobNotesFromNotes();
+      }
+      const feedItems = await response.json();
+      console.log(`[Comms] Fetched ${feedItems.length} feed items from ServiceM8`);
+      
+      // Log sample to understand structure
+      if (feedItems.length > 0) {
+        console.log(`[Comms] Sample feed item:`, JSON.stringify(feedItems[0], null, 2).substring(0, 500));
+      }
+      
+      // Find SMS and Email sent items
+      for (const item of feedItems) {
+        if (!item.related_object_uuid || item.related_object !== 'job') continue;
+        
+        const jobUuid = item.related_object_uuid;
+        const itemType = (item.type || '').toLowerCase();
+        const timestamp = item.timestamp ? new Date(item.timestamp) : new Date();
+        
+        // Only track actual sent emails and SMS
+        let commType: string | null = null;
+        if (itemType === 'sms' || itemType === 'sms_sent' || itemType.includes('sms')) {
+          commType = 'sms';
+        } else if (itemType === 'email' || itemType === 'email_sent' || itemType.includes('email')) {
+          commType = 'email';
+        }
+        
+        // Skip if not an email or SMS
+        if (!commType) continue;
+        
+        // Only keep the most recent email/SMS per job
+        const existing = commMap.get(jobUuid);
+        if (!existing || timestamp > existing.date) {
+          commMap.set(jobUuid, {
+            date: timestamp,
+            type: commType,
+            note: item.message || item.description || ''
+          });
+        }
+      }
+      
+      console.log(`[Comms] Mapped last email/SMS for ${commMap.size} jobs`);
+    } catch (e) {
+      console.error("[Comms] Error fetching feed items:", e);
+    }
+    return commMap;
+  }
+
+  // Fallback: Parse notes to find email/SMS mentions
+  private async fetchJobNotesFromNotes(): Promise<Map<string, { date: Date; type: string; note: string }>> {
+    const commMap = new Map<string, { date: Date; type: string; note: string }>();
     try {
       const response = await fetch(`${this.baseUrl}/note.json?%24top=5000&%24orderby=timestamp%20desc`, {
         headers: {
@@ -260,14 +321,9 @@ export class ServiceM8Client {
           "Content-Type": "application/json",
         },
       });
-      if (!response.ok) {
-        console.log("[Notes] Failed to fetch notes:", response.status);
-        return notesMap;
-      }
+      if (!response.ok) return commMap;
       const notes = await response.json();
-      console.log(`[Notes] Fetched ${notes.length} notes from ServiceM8`);
       
-      // Group notes by job and find the most recent one
       for (const note of notes) {
         if (!note.related_object_uuid || note.related_object !== 'job') continue;
         
@@ -275,20 +331,20 @@ export class ServiceM8Client {
         const noteText = (note.note || '').toLowerCase();
         const timestamp = note.timestamp ? new Date(note.timestamp) : new Date();
         
-        // Determine communication type from note content
-        let commType = 'note';
-        if (noteText.includes('email') || noteText.includes('sent email') || noteText.includes('received email')) {
+        // ONLY track emails and SMS - skip regular notes
+        let commType: string | null = null;
+        if (noteText.includes('email sent') || noteText.includes('sent email') || noteText.includes('emailed')) {
           commType = 'email';
-        } else if (noteText.includes('sms') || noteText.includes('text message')) {
+        } else if (noteText.includes('sms sent') || noteText.includes('sent sms') || noteText.includes('text sent')) {
           commType = 'sms';
-        } else if (noteText.includes('call') || noteText.includes('phone') || noteText.includes('spoke')) {
-          commType = 'call';
         }
         
-        // Only keep the most recent note per job
-        const existing = notesMap.get(jobUuid);
+        // Skip if not an email or SMS
+        if (!commType) continue;
+        
+        const existing = commMap.get(jobUuid);
         if (!existing || timestamp > existing.date) {
-          notesMap.set(jobUuid, {
+          commMap.set(jobUuid, {
             date: timestamp,
             type: commType,
             note: note.note || ''
@@ -296,11 +352,11 @@ export class ServiceM8Client {
         }
       }
       
-      console.log(`[Notes] Mapped last communication for ${notesMap.size} jobs`);
+      console.log(`[Comms] Mapped last email/SMS from notes for ${commMap.size} jobs`);
     } catch (e) {
-      console.error("[Notes] Error fetching notes:", e);
+      console.error("[Comms] Error fetching notes:", e);
     }
-    return notesMap;
+    return commMap;
   }
 
   // Bulk fetch all companies in one API call

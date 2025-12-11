@@ -32,7 +32,7 @@ export const jobs = pgTable("jobs", {
   schedulerStage: text("scheduler_stage").notNull().default("new_jobs_won"), // Kanban column for work orders
   daysSinceQuoteSent: integer("days_since_quote_sent"),
   hoursSinceQuoteSent: integer("hours_since_quote_sent"), // For quotes sent < 24 hours ago
-  daysSinceLastContact: integer("days_since_last_contact").notNull(),
+  daysSinceLastContact: integer("days_since_last_contact"),
   assignedStaff: text("assigned_staff"),
   lastNote: text("last_note"),
   urgency: text("urgency").notNull(),
@@ -66,7 +66,7 @@ export const insertJobSchema = createInsertSchema(jobs, {
   customerName: z.string(),
   address: z.string(),
   status: z.string(),
-  daysSinceLastContact: z.number(),
+  daysSinceLastContact: z.number().nullable().optional(),
   urgency: z.string(),
   purchaseOrderStatus: z.string().optional(),
   installStage: z.string().optional(),
