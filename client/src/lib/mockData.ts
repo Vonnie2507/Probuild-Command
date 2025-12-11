@@ -22,6 +22,12 @@ export interface Job {
   postInstallDate?: Date;
   panelInstallDate?: Date;
   estimatedProductionDuration: number; // days
+  
+  // New scheduling fields
+  postInstallDuration: number; // hours
+  postInstallCrewSize: number;
+  panelInstallDuration: number; // hours
+  panelInstallCrewSize: number;
 }
 
 export type StaffMember = {
@@ -29,17 +35,35 @@ export type StaffMember = {
   name: string;
   role: "sales" | "production" | "install";
   avatar?: string;
+  
+  // New capability fields
+  dailyCapacityHours: number;
+  skills: ("posts" | "panels" | "production")[];
+  color: string;
 };
 
 export const STAFF_MEMBERS: StaffMember[] = [
-  { id: "all", name: "All Staff", role: "sales" },
-  { id: "wayne", name: "Wayne", role: "sales" },
-  { id: "dave", name: "Dave", role: "sales" },
-  { id: "craig", name: "Craig", role: "production" },
-  { id: "sarah", name: "Sarah", role: "production" },
-  { id: "mike", name: "Mike", role: "install" },
-  { id: "tom", name: "Tom", role: "install" },
+  { id: "all", name: "All Staff", role: "sales", dailyCapacityHours: 0, skills: [], color: "bg-gray-500" },
+  { id: "wayne", name: "Wayne", role: "sales", dailyCapacityHours: 8, skills: [], color: "bg-blue-500" },
+  { id: "dave", name: "Dave", role: "sales", dailyCapacityHours: 8, skills: [], color: "bg-blue-500" },
+  { id: "craig", name: "Craig", role: "production", dailyCapacityHours: 8, skills: ["production"], color: "bg-amber-500" },
+  { id: "sarah", name: "Sarah", role: "production", dailyCapacityHours: 8, skills: ["production"], color: "bg-amber-500" },
+  
+  // Install Team A
+  { id: "mike", name: "Mike (Team A)", role: "install", dailyCapacityHours: 8, skills: ["posts", "panels"], color: "bg-emerald-500" },
+  { id: "tom", name: "Tom (Team A)", role: "install", dailyCapacityHours: 8, skills: ["posts", "panels"], color: "bg-emerald-500" },
+  
+  // Install Team B
+  { id: "josh", name: "Josh (Team B)", role: "install", dailyCapacityHours: 8, skills: ["posts", "panels"], color: "bg-indigo-500" },
+  { id: "sam", name: "Sam (Team B)", role: "install", dailyCapacityHours: 8, skills: ["posts", "panels"], color: "bg-indigo-500" },
 ];
+
+export const getDailyInstallCapacity = () => {
+  // Simple calculation: Sum of all install staff hours
+  return STAFF_MEMBERS
+    .filter(s => s.role === "install")
+    .reduce((sum, staff) => sum + staff.dailyCapacityHours, 0);
+};
 
 // Pipeline Columns Configuration
 export const PIPELINES = {
@@ -152,6 +176,12 @@ const generateJobs = (): Job[] => {
       postInstallDate: postDate,
       panelInstallDate: panelDate,
       estimatedProductionDuration: Math.floor(Math.random() * 10) + 5,
+      
+      // New random estimates
+      postInstallDuration: [4, 6, 8, 12][Math.floor(Math.random() * 4)],
+      postInstallCrewSize: 2,
+      panelInstallDuration: [4, 6, 8, 16][Math.floor(Math.random() * 4)],
+      panelInstallCrewSize: 2,
     });
   }
 
