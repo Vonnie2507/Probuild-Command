@@ -6,6 +6,7 @@ export type SchedulerStage = 'new_jobs_won' | 'in_production' | 'waiting_supplie
 export interface Job {
   id: string;
   jobId: string; // ServiceM8 ID like #1042
+  serviceM8Uuid?: string; // UUID for linking to ServiceM8
   customerName: string;
   address: string;
   description: string;

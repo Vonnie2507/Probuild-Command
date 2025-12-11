@@ -4,7 +4,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Job } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
-import { CalendarClock, Mail, MessageSquare, Phone, User, AlertCircle, CheckCircle2, Clock } from "lucide-react";
+import { CalendarClock, Mail, MessageSquare, Phone, User, AlertCircle, CheckCircle2, Clock, ExternalLink } from "lucide-react";
 import { Draggable } from "@hello-pangea/dnd";
 
 interface JobCardProps {
@@ -177,11 +177,20 @@ export function JobCard({ job, index }: JobCardProps) {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-white hover:text-orange-600 ml-auto">
-                    <FileText className="h-3.5 w-3.5" />
+                  <Button 
+                    size="icon" 
+                    variant="ghost" 
+                    className="h-6 w-6 hover:bg-white hover:text-orange-600 ml-auto"
+                    onClick={() => {
+                      if (job.serviceM8Uuid) {
+                        window.open(`https://go.servicem8.com/job/${job.serviceM8Uuid}`, '_blank');
+                      }
+                    }}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top"><p>View job details</p></TooltipContent>
+                <TooltipContent side="top"><p>Open in ServiceM8</p></TooltipContent>
               </Tooltip>
             </CardFooter>
           </Card>

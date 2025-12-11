@@ -20,6 +20,7 @@ function mapDbJobToJob(dbJob: SelectJob): Job {
   return {
     id: String(dbJob.id),
     jobId: dbJob.jobId || "#N/A",
+    serviceM8Uuid: dbJob.serviceM8Uuid || undefined,
     customerName: dbJob.customerName || "Unknown",
     address: dbJob.address || "",
     description: dbJob.description || "",
