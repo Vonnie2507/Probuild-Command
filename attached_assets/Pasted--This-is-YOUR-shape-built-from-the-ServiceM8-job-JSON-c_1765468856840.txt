@@ -1,0 +1,77 @@
+// This is YOUR shape, built from the ServiceM8 job JSON
+const jobCard = {
+  id: job.uuid,
+  jobNumber: job.generated_job_id,
+  status: job.status,                      // "Quote", "Work Order", etc.
+
+  client: {
+    uuid: job.company_uuid,
+    // name: <you can fill this after a company lookup>,
+  },
+
+  addresses: {
+    job: job.job_address,
+    billing: job.billing_address,
+    city: job.geo_city,
+    state: job.geo_state,
+    postcode: job.geo_postcode,
+  },
+
+  dates: {
+    jobDate: job.date,
+    quoteDate: job.quote_date,
+    workOrderDate: job.work_order_date,
+    completionDate: job.completion_date,
+    unsuccessfulDate: job.unsuccessful_date,
+    scheduledUntil: job.job_is_scheduled_until_stamp,
+    queueExpiry: job.queue_expiry_date,
+    lastEdited: job.edit_date,
+  },
+
+  financial: {
+    total: job.total_invoice_amount,
+    paymentAmount: job.payment_amount,
+    paymentMethod: job.payment_method,
+    paymentReceived: !!job.payment_received,
+    readyToInvoice: job.ready_to_invoice === "1",
+    depositPaid: job.customfield_deposit_paid,
+  },
+
+  messagingFlags: {
+    quoteSent: job.quote_sent,
+    invoiceSent: job.invoice_sent,
+  },
+
+  descriptions: {
+    jobDescription: job.job_description,
+    workDone: job.work_done_description,
+    paymentNote: job.payment_note,
+    purchaseOrderNumber: job.purchase_order_number,
+  },
+
+  staff: {
+    createdByUuid: job.created_by_staff_uuid,
+    queueAssignedUuid: job.queue_assigned_staff_uuid,
+    customAssignedName: job.customfield_staff_assigned, // "Wayne", "Dave T" etc.
+  },
+
+  queue: {
+    uuid: job.queue_uuid,
+    categoryUuid: job.category_uuid,
+  },
+
+  custom: {
+    clientType: job.customfield_client_type,
+    gateInstallRequired: job.customfield_gate_install_required,
+    postInstallDate: job.customfield_post_install_date,
+    panelsInstallDate: job.customfield_panels_install_date,
+  },
+
+  geo: {
+    lat: job.lat,
+    lng: job.lng,
+    isValid: !!job.geo_is_valid,
+  },
+
+  rawBadges: job.badges, // JSON string of badge UUIDs
+};
