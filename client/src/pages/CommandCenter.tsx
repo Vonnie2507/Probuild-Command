@@ -51,6 +51,28 @@ export default function CommandCenter() {
     );
   };
 
+  const handleUnscheduleJob = (jobId: string, type: 'posts' | 'panels') => {
+    setJobs((prev) =>
+      prev.map((job) => {
+        if (job.id !== jobId) return job;
+        
+        if (type === 'posts') {
+          return {
+            ...job,
+            postInstallDate: undefined,
+            installStage: 'pending_posts' as const,
+          };
+        } else {
+          return {
+            ...job,
+            panelInstallDate: undefined,
+            installStage: 'pending_panels' as const,
+          };
+        }
+      })
+    );
+  };
+
   const filteredJobs = jobs.filter((job) => {
     const staffMatch = selectedStaff === "all" || job.assignedStaff === selectedStaff;
     const searchMatch = 
@@ -213,6 +235,7 @@ export default function CommandCenter() {
             jobs={filteredJobs} 
             onJobMove={handleJobMove}
             onScheduleJob={handleScheduleJob}
+            onUnscheduleJob={handleUnscheduleJob}
           />
         )}
       </main>

@@ -5,7 +5,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar as CalendarIcon, MapPin, Truck, Factory, Users, Clock, GripVertical } from "lucide-react";
+import { Calendar as CalendarIcon, MapPin, Truck, Factory, Users, Clock, GripVertical, X } from "lucide-react";
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -14,9 +14,10 @@ interface SchedulerDashboardProps {
   jobs: Job[];
   onJobMove: (jobId: string, newStatus: string) => void;
   onScheduleJob?: (jobId: string, type: 'posts' | 'panels', date: Date) => void;
+  onUnscheduleJob?: (jobId: string, type: 'posts' | 'panels') => void;
 }
 
-export function SchedulerDashboard({ jobs, onScheduleJob }: SchedulerDashboardProps) {
+export function SchedulerDashboard({ jobs, onScheduleJob, onUnscheduleJob }: SchedulerDashboardProps) {
   const { staff, pipelines, getDailyInstallCapacity } = useSettings();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [scheduleModal, setScheduleModal] = useState<{
@@ -80,7 +81,7 @@ export function SchedulerDashboard({ jobs, onScheduleJob }: SchedulerDashboardPr
     // Parse the draggable ID to get job ID and type
     const [jobId, type] = draggableId.split('::');
     
-    // Check if dropped on a calendar day
+    // Check if dropped on a calendar day (scheduling)
     if (destination.droppableId.startsWith('calendar-')) {
       const dateStr = destination.droppableId.replace('calendar-', '');
       const date = parseISO(dateStr);
@@ -88,6 +89,25 @@ export function SchedulerDashboard({ jobs, onScheduleJob }: SchedulerDashboardPr
       if (onScheduleJob) {
         onScheduleJob(jobId, type as 'posts' | 'panels', date);
       }
+    }
+    
+    // Check if dropped back to staging queue (unscheduling)
+    if (destination.droppableId === 'posts-queue' && type === 'posts') {
+      if (onUnscheduleJob) {
+        onUnscheduleJob(jobId, 'posts');
+      }
+    }
+    if (destination.droppableId === 'panels-queue' && type === 'panels') {
+      if (onUnscheduleJob) {
+        onUnscheduleJob(jobId, 'panels');
+      }
+    }
+  };
+
+  const handleUnscheduleClick = (jobId: string, type: 'posts' | 'panels', e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onUnscheduleJob) {
+      onUnscheduleJob(jobId, type);
     }
   };
 
@@ -441,37 +461,76 @@ export function SchedulerDashboard({ jobs, onScheduleJob }: SchedulerDashboardPr
                         </div>
                         <div className="p-2 space-y-2 flex-1 overflow-y-auto min-h-[100px]">
                           
-                          {/* Post Installs */}
-                          {postJobs.map(job => (
-                            <div key={`post-${job.id}`} className="bg-blue-50 border border-blue-200 rounded p-2 text-xs shadow-sm hover:border-blue-400 cursor-pointer group relative overflow-hidden">
-                              {/* Duration Bar */}
-                              <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
-                              
-                              <div className="flex items-center justify-between mb-1 pl-2">
-                                <span className="font-bold text-blue-700">POSTS</span>
-                                <span className="text-[9px] font-mono font-bold bg-white px-1 rounded border border-blue-100 text-blue-600">{job.postInstallDuration}h</span>
-                              </div>
-                              <div className="font-medium text-foreground mb-0.5 pl-2">{job.customerName}</div>
-                               <div className="flex items-center gap-1 text-[10px] text-muted-foreground pl-2">
-                                <Truck className="h-3 w-3" /> Team A ({job.postInstallCrewSize} Pax)
-                              </div>
-                            </div>
+                          {/* Post Installs - Draggable */}
+                          {postJobs.map((job, index) => (
+                            <Draggable key={`cal-post-${job.id}`} draggableId={`${job.id}::posts`} index={index}>
+                              {(provided, snapshot) => (
+                                <div 
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  {...provided.dragHandleProps}
+                                  className={cn(
+                                    "bg-blue-50 border border-blue-200 rounded p-2 text-xs shadow-sm hover:border-blue-400 cursor-grab active:cursor-grabbing group relative overflow-hidden",
+                                    snapshot.isDragging && "shadow-lg ring-2 ring-blue-400"
+                                  )}
+                                >
+                                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
+                                  
+                                  <button 
+                                    onClick={(e) => handleUnscheduleClick(job.id, 'posts', e)}
+                                    className="absolute right-1 top-1 p-0.5 rounded hover:bg-red-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    data-testid={`unschedule-posts-${job.id}`}
+                                  >
+                                    <X className="h-3 w-3 text-red-500" />
+                                  </button>
+                                  
+                                  <div className="flex items-center justify-between mb-1 pl-2 pr-4">
+                                    <span className="font-bold text-blue-700">POSTS</span>
+                                    <span className="text-[9px] font-mono font-bold bg-white px-1 rounded border border-blue-100 text-blue-600">{job.postInstallDuration}h</span>
+                                  </div>
+                                  <div className="font-medium text-foreground mb-0.5 pl-2">{job.customerName}</div>
+                                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground pl-2">
+                                    <Truck className="h-3 w-3" /> Team A ({job.postInstallCrewSize} Pax)
+                                  </div>
+                                </div>
+                              )}
+                            </Draggable>
                           ))}
 
-                          {/* Panel Installs */}
-                          {panelJobs.map(job => (
-                            <div key={`panel-${job.id}`} className="bg-purple-50 border border-purple-200 rounded p-2 text-xs shadow-sm hover:border-purple-400 cursor-pointer group relative overflow-hidden">
-                              <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-500"></div>
+                          {/* Panel Installs - Draggable */}
+                          {panelJobs.map((job, index) => (
+                            <Draggable key={`cal-panel-${job.id}`} draggableId={`${job.id}::panels`} index={postJobs.length + index}>
+                              {(provided, snapshot) => (
+                                <div 
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  {...provided.dragHandleProps}
+                                  className={cn(
+                                    "bg-purple-50 border border-purple-200 rounded p-2 text-xs shadow-sm hover:border-purple-400 cursor-grab active:cursor-grabbing group relative overflow-hidden",
+                                    snapshot.isDragging && "shadow-lg ring-2 ring-purple-400"
+                                  )}
+                                >
+                                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-500"></div>
 
-                              <div className="flex items-center justify-between mb-1 pl-2">
-                                <span className="font-bold text-purple-700">PANELS</span>
-                                <span className="text-[9px] font-mono font-bold bg-white px-1 rounded border border-purple-100 text-purple-600">{job.panelInstallDuration}h</span>
-                              </div>
-                              <div className="font-medium text-foreground mb-0.5 pl-2">{job.customerName}</div>
-                               <div className="flex items-center gap-1 text-[10px] text-muted-foreground pl-2">
-                                <Truck className="h-3 w-3" /> Team B ({job.panelInstallCrewSize} Pax)
-                              </div>
-                            </div>
+                                  <button 
+                                    onClick={(e) => handleUnscheduleClick(job.id, 'panels', e)}
+                                    className="absolute right-1 top-1 p-0.5 rounded hover:bg-red-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    data-testid={`unschedule-panels-${job.id}`}
+                                  >
+                                    <X className="h-3 w-3 text-red-500" />
+                                  </button>
+
+                                  <div className="flex items-center justify-between mb-1 pl-2 pr-4">
+                                    <span className="font-bold text-purple-700">PANELS</span>
+                                    <span className="text-[9px] font-mono font-bold bg-white px-1 rounded border border-purple-100 text-purple-600">{job.panelInstallDuration}h</span>
+                                  </div>
+                                  <div className="font-medium text-foreground mb-0.5 pl-2">{job.customerName}</div>
+                                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground pl-2">
+                                    <Truck className="h-3 w-3" /> Team B ({job.panelInstallCrewSize} Pax)
+                                  </div>
+                                </div>
+                              )}
+                            </Draggable>
                           ))}
                           
                           {provided.placeholder}
