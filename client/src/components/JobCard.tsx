@@ -2,15 +2,19 @@ import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Job } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
-import { CalendarClock, Mail, MessageSquare, Phone, User, AlertCircle, CheckCircle2, Clock, FileText, MapPin, DollarSign, Calendar, Briefcase, ExternalLink, Loader2 } from "lucide-react";
+import { CalendarClock, Mail, MessageSquare, Phone, User, AlertCircle, CheckCircle2, Clock, FileText, MapPin, DollarSign, Calendar, Briefcase, ExternalLink, Loader2, Send } from "lucide-react";
 import { Draggable } from "@hello-pangea/dnd";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 interface ServiceM8Note {
   uuid: string;
@@ -51,6 +55,14 @@ export function JobCard({ job, index }: JobCardProps) {
   const [communications, setCommunications] = useState<CommunicationItem[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
+  
+  // SMS compose state
+  const [smsDialogOpen, setSmsDialogOpen] = useState(false);
+  const [smsPhone, setSmsPhone] = useState("");
+  const [smsMessage, setSmsMessage] = useState("");
+  const [sendingSms, setSendingSms] = useState(false);
+  const [loadingContact, setLoadingContact] = useState(false);
+  const { toast } = useToast();
   
   useEffect(() => {
     if (detailsOpen && job.serviceM8Uuid) {
@@ -113,6 +125,75 @@ export function JobCard({ job, index }: JobCardProps) {
         .finally(() => setLoadingNotes(false));
     }
   }, [detailsOpen, job.serviceM8Uuid]);
+
+  // Fetch contact info when SMS dialog opens
+  useEffect(() => {
+    if (smsDialogOpen && job.serviceM8Uuid) {
+      setLoadingContact(true);
+      fetch(`/api/servicem8/job-contact/${job.serviceM8Uuid}`)
+        .then(res => res.json())
+        .then(data => {
+          // Prefer mobile, fallback to phone
+          const phoneNumber = data.mobile || data.phone || "";
+          setSmsPhone(phoneNumber);
+        })
+        .catch(err => {
+          console.error("Failed to fetch contact:", err);
+        })
+        .finally(() => setLoadingContact(false));
+    }
+  }, [smsDialogOpen, job.serviceM8Uuid]);
+
+  const handleOpenSmsDialog = () => {
+    setSmsMessage("");
+    setSmsDialogOpen(true);
+  };
+
+  const handleSendSms = async () => {
+    if (!smsPhone || !smsMessage.trim()) {
+      toast({
+        title: "Missing information",
+        description: "Please enter a phone number and message",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setSendingSms(true);
+    try {
+      const response = await fetch("/api/messaging/sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: smsPhone,
+          message: smsMessage,
+          jobUuid: job.serviceM8Uuid
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || data.message || "Failed to send SMS");
+      }
+
+      toast({
+        title: "SMS sent!",
+        description: `Message sent to ${smsPhone}`,
+      });
+      
+      setSmsDialogOpen(false);
+      setSmsMessage("");
+    } catch (error: any) {
+      toast({
+        title: "Failed to send SMS",
+        description: error.message || "Please check your ServiceM8 connection",
+        variant: "destructive"
+      });
+    } finally {
+      setSendingSms(false);
+    }
+  };
   
   const getCommIcon = (item: CommunicationItem) => {
     switch (item.type) {
@@ -277,11 +358,26 @@ export function JobCard({ job, index }: JobCardProps) {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-white hover:text-blue-600">
+                  <Button 
+                    size="icon" 
+                    variant="ghost" 
+                    className={cn(
+                      "h-6 w-6 hover:bg-white hover:text-blue-600",
+                      !job.serviceM8Uuid && "opacity-50 cursor-not-allowed"
+                    )}
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      if (job.serviceM8Uuid) handleOpenSmsDialog(); 
+                    }}
+                    disabled={!job.serviceM8Uuid}
+                    data-testid={`button-sms-${job.id}`}
+                  >
                     <MessageSquare className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top"><p>Send SMS</p></TooltipContent>
+                <TooltipContent side="top">
+                  <p>{job.serviceM8Uuid ? "Send SMS" : "No ServiceM8 link"}</p>
+                </TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -496,6 +592,78 @@ export function JobCard({ job, index }: JobCardProps) {
           )}
         </div>
       </DialogContent>
+      </Dialog>
+      
+      {/* SMS Compose Dialog */}
+      <Dialog open={smsDialogOpen} onOpenChange={setSmsDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-blue-500" />
+              Send SMS
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="sms-to">To: {job.customerName}</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="sms-to"
+                  type="tel"
+                  placeholder="Phone number"
+                  value={smsPhone}
+                  onChange={(e) => setSmsPhone(e.target.value)}
+                  disabled={loadingContact}
+                  data-testid="input-sms-phone"
+                />
+                {loadingContact && <Loader2 className="h-4 w-4 animate-spin" />}
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="sms-message">Message</Label>
+              <Textarea
+                id="sms-message"
+                placeholder="Type your message..."
+                value={smsMessage}
+                onChange={(e) => setSmsMessage(e.target.value)}
+                rows={4}
+                data-testid="input-sms-message"
+              />
+              <p className="text-xs text-muted-foreground">
+                {smsMessage.length} characters
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setSmsDialogOpen(false)}
+              disabled={sendingSms}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSendSms}
+              disabled={sendingSms || !smsPhone || !smsMessage.trim()}
+              data-testid="button-send-sms"
+            >
+              {sendingSms ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Send SMS
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </>
   );

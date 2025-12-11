@@ -11,7 +11,7 @@ const SM8_OAUTH_CONFIG = {
   tokenUrl: "https://go.servicem8.com/oauth/access_token",
   clientId: process.env.SERVICEM8_APP_ID || process.env.SERVICEM8_CLIENT_ID || "",
   clientSecret: process.env.SERVICEM8_APP_SECRET || process.env.SERVICEM8_CLIENT_SECRET || "",
-  scopes: "read_jobs read_schedule manage_schedule read_job_notes read_staff read_customers",
+  scopes: "read_jobs read_schedule manage_schedule read_job_notes read_staff read_customers publish_sms publish_email",
 };
 
 
@@ -259,6 +259,89 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching sync status:", error);
       res.status(500).json({ error: "Failed to fetch sync status" });
+    }
+  });
+
+  // Send SMS via ServiceM8 messaging API
+  app.post("/api/messaging/sms", async (req, res) => {
+    try {
+      const { to, message, jobUuid, staffUuid } = req.body;
+      
+      if (!to || !message) {
+        return res.status(400).json({ error: "Missing required fields: to, message" });
+      }
+
+      // Validate phone number format (should be E.164 with + prefix)
+      let phoneNumber = to.trim();
+      if (!phoneNumber.startsWith('+')) {
+        // Assume Australian number if no country code
+        phoneNumber = phoneNumber.replace(/^0/, '+61');
+        if (!phoneNumber.startsWith('+')) {
+          phoneNumber = '+61' + phoneNumber;
+        }
+      }
+
+      const token = await getValidOAuthToken();
+      if (!token) {
+        return res.status(401).json({ 
+          error: "ServiceM8 not connected",
+          message: "Please connect to ServiceM8 in Settings first"
+        });
+      }
+
+      // Build headers with optional staff impersonation
+      const headers: Record<string, string> = {
+        "Authorization": `Bearer ${token.accessToken}`,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      };
+      
+      if (staffUuid) {
+        headers["x-impersonate-uuid"] = staffUuid;
+      }
+
+      // Build payload for ServiceM8 platform SMS API
+      const payload: Record<string, string> = {
+        to: phoneNumber,
+        message: message,
+      };
+      
+      // Link to job if UUID provided
+      if (jobUuid) {
+        payload.regardingJobUUID = jobUuid;
+      }
+
+      // Send SMS via ServiceM8 platform SMS API
+      const smsResponse = await fetch("https://api.servicem8.com/platform_service_sms", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      const result = await smsResponse.json().catch(() => ({}));
+      
+      if (!smsResponse.ok) {
+        console.error("ServiceM8 SMS send failed:", smsResponse.status, result);
+        // Return sanitized error to client
+        const errorMessage = result.message || "Failed to send SMS. Please check the phone number and try again.";
+        return res.status(smsResponse.status).json({ 
+          error: "Failed to send SMS",
+          message: errorMessage,
+          errorCode: result.errorCode
+        });
+      }
+
+      console.log("SMS sent successfully:", result);
+      
+      res.json({ 
+        success: true, 
+        message: result.message || "SMS sent successfully",
+        messageId: result.messageID,
+        to: result.to
+      });
+    } catch (error: any) {
+      console.error("Error sending SMS:", error);
+      res.status(500).json({ error: "Failed to send SMS", message: "An unexpected error occurred. Please try again." });
     }
   });
 
@@ -689,6 +772,51 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Error fetching job history:", error);
       res.status(500).json({ error: "Failed to fetch job history", message: error.message });
+    }
+  });
+
+  // Fetch job contact info for SMS/email
+  app.get("/api/servicem8/job-contact/:jobUuid", async (req, res) => {
+    try {
+      const token = await getValidOAuthToken();
+      if (!token) {
+        return res.status(401).json({ error: "Not connected to ServiceM8 OAuth. Please connect first." });
+      }
+
+      const { jobUuid } = req.params;
+      
+      // Fetch job contacts
+      const contactRes = await fetch(
+        `https://api.servicem8.com/api_1.0/jobcontact.json?%24filter=job_uuid%20eq%20'${jobUuid}'`,
+        {
+          headers: {
+            "Authorization": `Bearer ${token.accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!contactRes.ok) {
+        return res.status(contactRes.status).json({ error: "Failed to fetch contact" });
+      }
+
+      const contacts = await contactRes.json();
+      
+      if (contacts.length === 0) {
+        return res.json({ phone: "", mobile: "", email: "" });
+      }
+
+      const contact = contacts[0];
+      res.json({
+        first: contact.first || "",
+        last: contact.last || "",
+        phone: contact.phone || "",
+        mobile: contact.mobile || "",
+        email: contact.email || ""
+      });
+    } catch (error: any) {
+      console.error("Error fetching job contact:", error);
+      res.status(500).json({ error: "Failed to fetch job contact", message: error.message });
     }
   });
 
