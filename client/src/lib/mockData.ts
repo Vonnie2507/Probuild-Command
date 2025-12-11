@@ -106,11 +106,11 @@ export const PIPELINES = {
     { id: "lost", title: "Lost" },
   ],
   production: [
+    { id: "work_order", title: "Work Orders" },
     { id: "man_posts", title: "Manufacture Posts" },
     { id: "inst_posts", title: "Install Posts" },
     { id: "man_panels", title: "Manufacture Panels" },
     { id: "inst_panels", title: "Install Panels" },
-    { id: "complete", title: "Complete" },
   ],
 };
 
