@@ -611,6 +611,29 @@ function GeneralSettings() {
   const [saved, setSaved] = useState(false);
   const [newStageName, setNewStageName] = useState("");
   const [isAddingStage, setIsAddingStage] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState<{ connected: boolean; message: string } | null>(null);
+  const [checkingOauth, setCheckingOauth] = useState(false);
+
+  useEffect(() => {
+    checkOAuthStatus();
+  }, []);
+
+  const checkOAuthStatus = async () => {
+    setCheckingOauth(true);
+    try {
+      const res = await fetch("/api/auth/servicem8/status");
+      const data = await res.json();
+      setOauthStatus(data);
+    } catch (err) {
+      setOauthStatus({ connected: false, message: "Failed to check connection" });
+    } finally {
+      setCheckingOauth(false);
+    }
+  };
+
+  const handleConnectServiceM8 = () => {
+    window.location.href = "/api/auth/servicem8/login";
+  };
 
   const handleSave = () => {
     setAppSettings(form);
@@ -638,31 +661,71 @@ function GeneralSettings() {
   };
 
   return (
-    <Card>
-      <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-sm font-medium">General Settings</CardTitle>
-        <CardDescription className="text-xs">Configure application-wide settings</CardDescription>
-      </CardHeader>
-      <CardContent className="p-4 pt-2 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label className="text-xs">Company Name</Label>
-            <Input
-              value={form.companyName}
-              onChange={(e) => setForm({ ...form, companyName: e.target.value })}
-              data-testid="company-name-input"
-            />
+    <div className="space-y-4">
+      <Card className="border-blue-200 bg-blue-50/30">
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M8 12h8M12 8v8"/>
+            </svg>
+            ServiceM8 Connection
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Connect to ServiceM8 to sync job data, notes, and communication history
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {checkingOauth ? (
+                <Badge variant="secondary">Checking...</Badge>
+              ) : oauthStatus?.connected ? (
+                <Badge variant="default" className="bg-green-500">Connected</Badge>
+              ) : (
+                <Badge variant="destructive">Not Connected</Badge>
+              )}
+              <span className="text-xs text-muted-foreground">
+                {oauthStatus?.message || "Check connection status"}
+              </span>
+            </div>
+            <Button 
+              onClick={handleConnectServiceM8} 
+              variant={oauthStatus?.connected ? "outline" : "default"}
+              size="sm"
+              data-testid="connect-servicem8-btn"
+            >
+              {oauthStatus?.connected ? "Reconnect" : "Connect to ServiceM8"}
+            </Button>
           </div>
-          <div>
-            <Label className="text-xs">Default Work Hours/Day</Label>
-            <Input
-              type="number"
-              value={form.defaultWorkHoursPerDay}
-              onChange={(e) => setForm({ ...form, defaultWorkHoursPerDay: parseInt(e.target.value) })}
-              data-testid="work-hours-input"
-            />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-sm font-medium">General Settings</CardTitle>
+          <CardDescription className="text-xs">Configure application-wide settings</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-2 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="text-xs">Company Name</Label>
+              <Input
+                value={form.companyName}
+                onChange={(e) => setForm({ ...form, companyName: e.target.value })}
+                data-testid="company-name-input"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Default Work Hours/Day</Label>
+              <Input
+                type="number"
+                value={form.defaultWorkHoursPerDay}
+                onChange={(e) => setForm({ ...form, defaultWorkHoursPerDay: parseInt(e.target.value) })}
+                data-testid="work-hours-input"
+              />
+            </div>
           </div>
-        </div>
 
         <div>
           <Label className="text-xs mb-2 block">Install Stages</Label>
@@ -739,8 +802,9 @@ function GeneralSettings() {
             </>
           )}
         </Button>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
