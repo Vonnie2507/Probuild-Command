@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { MOCK_JOBS, PIPELINES, STAFF_MEMBERS, Job } from "@/lib/mockData";
 import { PipelineBoard } from "@/components/PipelineBoard";
+import { ProductionDashboard } from "@/components/ProductionDashboard";
+import { SchedulerDashboard } from "@/components/SchedulerDashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -9,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 export default function CommandCenter() {
-  const [viewMode, setViewMode] = useState<"sales" | "production">("sales");
+  const [viewMode, setViewMode] = useState<"sales" | "production" | "scheduler">("sales");
   const [jobs, setJobs] = useState<Job[]>(MOCK_JOBS);
   const [selectedStaff, setSelectedStaff] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -58,7 +60,7 @@ export default function CommandCenter() {
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              Sales & Quotes
+              Sales
             </button>
             <button
               onClick={() => setViewMode("production")}
@@ -70,6 +72,17 @@ export default function CommandCenter() {
               )}
             >
               Production
+            </button>
+            <button
+              onClick={() => setViewMode("scheduler")}
+              className={cn(
+                "px-4 py-1.5 text-xs font-bold uppercase tracking-wide rounded-sm transition-all",
+                viewMode === "scheduler" 
+                  ? "bg-white text-primary shadow-sm" 
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Scheduler
             </button>
           </div>
         </div>
@@ -110,7 +123,7 @@ export default function CommandCenter() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden p-6 pt-4">
-        {viewMode === "sales" ? (
+        {viewMode === "sales" && (
           <Tabs defaultValue="leads" className="h-full flex flex-col">
             <div className="flex items-center justify-between mb-4 shrink-0">
               <TabsList className="h-10 bg-muted/50 p-1">
@@ -140,30 +153,14 @@ export default function CommandCenter() {
                />
             </TabsContent>
           </Tabs>
-        ) : (
-          <div className="h-full flex flex-col">
-            <div className="flex items-center justify-between mb-4 shrink-0">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-heading text-foreground">Production Schedule</h2>
-                <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-bold">
-                  {filteredJobs.filter(j => PIPELINES.production.some(p => p.id === j.status)).length} Active Jobs
-                </span>
-              </div>
-              
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Sync ServiceM8
-              </Button>
-            </div>
-            
-            <div className="flex-1 overflow-hidden">
-              <PipelineBoard 
-                  columns={PIPELINES.production} 
-                  jobs={filteredJobs} 
-                  onJobMove={handleJobMove} 
-               />
-            </div>
-          </div>
+        )}
+
+        {viewMode === "production" && (
+          <ProductionDashboard jobs={filteredJobs} onJobMove={handleJobMove} />
+        )}
+
+        {viewMode === "scheduler" && (
+          <SchedulerDashboard jobs={filteredJobs} onJobMove={handleJobMove} />
         )}
       </main>
     </div>

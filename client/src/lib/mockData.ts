@@ -15,20 +15,29 @@ export interface Job {
   dateCreated: Date;
   urgency: "low" | "medium" | "high" | "critical";
   lastContactWho: "us" | "client";
+  dueDate?: Date;
+  purchaseOrderStatus: "none" | "ordered" | "received" | "delayed";
+  productionTasks: { id: string; name: string; completed: boolean; assignedTo?: string }[];
+  installDate?: Date;
+  installTeam?: string;
+  readyForInstall: boolean;
 }
 
 export type StaffMember = {
   id: string;
   name: string;
+  role: "sales" | "production" | "install";
   avatar?: string;
 };
 
 export const STAFF_MEMBERS: StaffMember[] = [
-  { id: "all", name: "All Staff" },
-  { id: "wayne", name: "Wayne" },
-  { id: "dave", name: "Dave" },
-  { id: "craig", name: "Craig" },
-  { id: "sarah", name: "Sarah" },
+  { id: "all", name: "All Staff", role: "sales" },
+  { id: "wayne", name: "Wayne", role: "sales" },
+  { id: "dave", name: "Dave", role: "sales" },
+  { id: "craig", name: "Craig", role: "production" },
+  { id: "sarah", name: "Sarah", role: "production" },
+  { id: "mike", name: "Mike", role: "install" },
+  { id: "tom", name: "Tom", role: "install" },
 ];
 
 // Pipeline Columns Configuration
@@ -88,6 +97,7 @@ const generateJobs = (): Job[] => {
     const status = statuses[Math.floor(Math.random() * statuses.length)];
     const isQuotePhase = PIPELINES.quotes.some(c => c.id === status);
     const quoteSentDays = isQuotePhase ? Math.floor(Math.random() * 20) : undefined;
+    const isProduction = PIPELINES.production.some(c => c.id === status);
     
     jobs.push({
       id: `job-${i}`,
@@ -104,6 +114,15 @@ const generateJobs = (): Job[] => {
       dateCreated: subDays(new Date(), Math.floor(Math.random() * 60)),
       urgency: Math.random() > 0.8 ? "critical" : Math.random() > 0.5 ? "high" : "low",
       lastContactWho: Math.random() > 0.5 ? "us" : "client",
+      dueDate: isProduction ? addDays(new Date(), Math.floor(Math.random() * 14)) : undefined,
+      purchaseOrderStatus: Math.random() > 0.7 ? "ordered" : Math.random() > 0.9 ? "received" : "none",
+      productionTasks: [
+        { id: "t1", name: "Cut Posts", completed: Math.random() > 0.5 },
+        { id: "t2", name: "Route Rails", completed: Math.random() > 0.5 },
+        { id: "t3", name: "Pack Accessories", completed: false }
+      ],
+      readyForInstall: isProduction && Math.random() > 0.6,
+      installDate: isProduction && Math.random() > 0.6 ? addDays(new Date(), Math.floor(Math.random() * 20)) : undefined,
     });
   }
 
