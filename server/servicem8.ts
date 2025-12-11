@@ -784,8 +784,8 @@ export class ServiceM8Client {
     
     if (lifecyclePhase === 'quote' && appStatus !== 'unsuccessful') {
       if (hasQuoteSent) {
-        // Quote jobs don't need a scheduler stage - they're in sales pipelines
-        schedulerStage = null;
+        // Quote jobs use 'new_jobs_won' as default scheduler stage (not displayed in scheduler anyway)
+        schedulerStage = 'new_jobs_won';
         // For Leads Pipeline: set status to quote_sent
         appStatus = 'quote_sent';
         // For Quotes Pipeline: set salesStage based on days since quote was sent

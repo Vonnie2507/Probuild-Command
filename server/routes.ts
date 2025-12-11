@@ -1383,6 +1383,72 @@ export async function registerRoutes(
     }
   });
 
+  // Start timer for a task/stage
+  app.post("/api/jobs/:jobId/stages/:stageId/timer/start", async (req, res) => {
+    try {
+      const jobId = parseInt(req.params.jobId);
+      const stageId = parseInt(req.params.stageId);
+      
+      // Ensure stage progress record exists
+      await storage.getOrCreateStageProgress(jobId, stageId);
+      
+      const result = await storage.startTimer(jobId, stageId);
+      if (!result) {
+        return res.status(404).json({ error: "Stage progress not found" });
+      }
+      res.json(result);
+    } catch (error) {
+      console.error("Error starting timer:", error);
+      res.status(500).json({ error: "Failed to start timer" });
+    }
+  });
+
+  // Stop timer for a task/stage
+  app.post("/api/jobs/:jobId/stages/:stageId/timer/stop", async (req, res) => {
+    try {
+      const jobId = parseInt(req.params.jobId);
+      const stageId = parseInt(req.params.stageId);
+      const result = await storage.stopTimer(jobId, stageId);
+      if (!result) {
+        return res.status(404).json({ error: "Stage progress not found" });
+      }
+      res.json(result);
+    } catch (error) {
+      console.error("Error stopping timer:", error);
+      res.status(500).json({ error: "Failed to stop timer" });
+    }
+  });
+
+  // Get timer status for all stages of a job
+  app.get("/api/jobs/:jobId/timers", async (req, res) => {
+    try {
+      const jobId = parseInt(req.params.jobId);
+      const progress = await storage.getJobStageProgress(jobId);
+      
+      // Calculate current elapsed time for running timers
+      const timers = progress.map(p => {
+        let currentElapsed = p.totalTimeSeconds || 0;
+        if (p.timerRunning && p.timerStartedAt) {
+          const now = new Date();
+          currentElapsed += Math.floor((now.getTime() - p.timerStartedAt.getTime()) / 1000);
+        }
+        return {
+          stageId: p.stageId,
+          timerRunning: p.timerRunning,
+          timerStartedAt: p.timerStartedAt,
+          totalTimeSeconds: p.totalTimeSeconds,
+          currentElapsedSeconds: currentElapsed,
+          status: p.status
+        };
+      });
+      
+      res.json(timers);
+    } catch (error) {
+      console.error("Error fetching timers:", error);
+      res.status(500).json({ error: "Failed to fetch timers" });
+    }
+  });
+
   return httpServer;
 }
 
