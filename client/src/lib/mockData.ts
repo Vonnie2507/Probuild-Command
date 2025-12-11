@@ -18,12 +18,17 @@ export interface Job {
   dueDate?: Date;
   purchaseOrderStatus: "none" | "ordered" | "received" | "delayed";
   productionTasks: { id: string; name: string; completed: boolean; assignedTo?: string }[];
-  installStage: 'pending_posts' | 'posts_scheduled' | 'measuring' | 'manufacturing_panels' | 'pending_panels' | 'panels_scheduled' | 'completed';
+  installStage: 'pending_posts' | 'tentative_posts' | 'posts_scheduled' | 'measuring' | 'manufacturing_panels' | 'pending_panels' | 'tentative_panels' | 'panels_scheduled' | 'completed';
   postInstallDate?: Date;
   panelInstallDate?: Date;
   estimatedProductionDuration: number; // days
   
-  // New scheduling fields
+  // Tentative scheduling (advance planning)
+  tentativePostDate?: Date;
+  tentativePanelDate?: Date;
+  tentativeNotes?: string;
+  
+  // Confirmed scheduling fields
   postInstallDuration: number; // hours
   postInstallCrewSize: number;
   panelInstallDuration: number; // hours
@@ -126,8 +131,10 @@ const generateJobs = (): Job[] => {
     
     // Determine install stage based on status
     let installStage: Job['installStage'] = 'pending_posts';
-    let postDate = undefined;
-    let panelDate = undefined;
+    let postDate: Date | undefined = undefined;
+    let panelDate: Date | undefined = undefined;
+    let tentativePostDate: Date | undefined = undefined;
+    let tentativePanelDate: Date | undefined = undefined;
 
     if (isProduction) {
        const r = Math.random();
@@ -148,6 +155,13 @@ const generateJobs = (): Job[] => {
        } else {
          installStage = 'pending_posts';
        }
+    }
+    
+    // Add tentative dates for some jobs (planning ahead)
+    if (!isProduction && Math.random() > 0.6) {
+      tentativePostDate = addDays(new Date(), Math.floor(Math.random() * 30) + 7);
+      tentativePanelDate = addDays(tentativePostDate, Math.floor(Math.random() * 7) + 3);
+      installStage = 'tentative_posts';
     }
 
     jobs.push({
@@ -175,6 +189,8 @@ const generateJobs = (): Job[] => {
       installStage: installStage,
       postInstallDate: postDate,
       panelInstallDate: panelDate,
+      tentativePostDate: tentativePostDate,
+      tentativePanelDate: tentativePanelDate,
       estimatedProductionDuration: Math.floor(Math.random() * 10) + 5,
       
       // New random estimates
