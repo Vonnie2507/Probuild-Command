@@ -446,7 +446,8 @@ export class ServiceM8Client {
     // Override schedulerStage based on quote_sent flag:
     // - If quote_sent is true and still in quote phase → "quotes_sent"
     // - If it's a work order → "new_jobs_won" (quote was won)
-    if (lifecyclePhase === 'quote' && hasQuoteSent) {
+    // BUT: Don't override if the job is already marked as unsuccessful or complete
+    if (lifecyclePhase === 'quote' && hasQuoteSent && appStatus !== 'unsuccessful') {
       schedulerStage = 'quotes_sent';
       appStatus = 'quote_sent';
     }
