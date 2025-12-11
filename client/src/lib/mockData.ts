@@ -67,6 +67,9 @@ export interface Job {
   
   // Sales pipeline stage for Quotes Pipeline (fresh, awaiting_reply, etc.)
   salesStage?: string;
+  
+  // ServiceM8 badges (Hot Lead, VIP, etc.)
+  badges?: string[];
 }
 
 // Scheduler Kanban columns for work orders

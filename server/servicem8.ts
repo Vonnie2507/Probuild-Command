@@ -123,6 +123,34 @@ export class ServiceM8Client {
     }
   }
 
+  // Fetch all badge definitions
+  async fetchBadges(): Promise<Map<string, string>> {
+    const badgeMap = new Map<string, string>();
+    try {
+      const response = await fetch(`${this.baseUrl}/badge.json`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) {
+        console.error("[Badges] Failed to fetch badges:", response.status);
+        return badgeMap;
+      }
+      const badges = await response.json();
+      console.log(`[Badges] Fetched ${badges.length} badge definitions`);
+      for (const badge of badges) {
+        if (badge.uuid && badge.name) {
+          badgeMap.set(badge.uuid, badge.name);
+          console.log(`[Badges] Badge: ${badge.uuid} = "${badge.name}"`);
+        }
+      }
+    } catch (e) {
+      console.error("[Badges] Error fetching badges:", e);
+    }
+    return badgeMap;
+  }
+
   // Bulk fetch all companies with full details
   async fetchAllCompaniesFull(): Promise<Map<string, {
     uuid: string;
@@ -562,6 +590,7 @@ export class ServiceM8Client {
       panelInstallDuration: 8,
       panelInstallCrewSize: 2,
       syncedAt: new Date(),
+      badges: sm8Job.badges ? sm8Job.badges.split(',').map((b: string) => b.trim()).filter((b: string) => b.length > 0) : [],
     };
   }
 

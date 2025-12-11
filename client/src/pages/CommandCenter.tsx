@@ -213,15 +213,32 @@ export default function CommandCenter() {
     return staffMatch && searchMatch;
   });
 
-  // Quote phase jobs for Sales section (orange cards)
-  // Include: new_lead (no quote sent), fresh (0-3 days), awaiting_reply (4+ days)
-  // Also include any quotes pipeline status for flexibility
+  // Quote phase jobs for Leads Pipeline (all active quote-phase jobs)
   // Exclude: unsuccessful, complete (terminal statuses)
-  const quoteJobs = filteredJobs.filter(job => 
+  const leadsJobs = filteredJobs.filter(job => 
     job.lifecyclePhase === 'quote' && 
     job.status !== 'unsuccessful' && 
     job.status !== 'complete'
   );
+  
+  // Jobs with quotes SENT for Quotes Pipeline (only fresh, awaiting_reply, or Hot Lead badge)
+  // Jobs with "Hot Lead" badge get routed to "hot" column via displaySalesStage
+  const quotesJobs = filteredJobs
+    .filter(job => 
+      job.lifecyclePhase === 'quote' && 
+      (
+        (job.salesStage && (job.salesStage === 'fresh' || job.salesStage === 'awaiting_reply')) ||
+        (job.badges && job.badges.includes('Hot Lead'))
+      )
+    )
+    .map(job => {
+      // If job has Hot Lead badge, override salesStage to 'hot' for display
+      const hasHotLeadBadge = job.badges && job.badges.includes('Hot Lead');
+      return {
+        ...job,
+        salesStage: hasHotLeadBadge ? 'hot' : job.salesStage
+      };
+    });
   
   // Work order phase jobs for Scheduler/Production (blue cards)
   const workOrderJobs = filteredJobs.filter(job => job.lifecyclePhase === 'work_order');
@@ -366,7 +383,7 @@ export default function CommandCenter() {
             <TabsContent value="leads" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
                <PipelineBoard 
                   columns={pipelines.leads} 
-                  jobs={quoteJobs} 
+                  jobs={leadsJobs} 
                   onJobMove={handleJobMove} 
                />
             </TabsContent>
@@ -374,7 +391,7 @@ export default function CommandCenter() {
             <TabsContent value="quotes" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
               <PipelineBoard 
                   columns={pipelines.quotes} 
-                  jobs={quoteJobs} 
+                  jobs={quotesJobs} 
                   onJobMove={handleJobMove}
                   statusField="salesStage"
                />

@@ -59,6 +59,7 @@ export const jobs = pgTable("jobs", {
   lastCommunicationDate: timestamp("last_communication_date"), // Last email/SMS/call
   lastCommunicationType: text("last_communication_type"), // 'email' | 'sms' | 'call' | 'note'
   salesStage: text("sales_stage"), // For Quotes Pipeline: 'fresh', 'awaiting_reply', etc.
+  badges: text("badges").array(), // ServiceM8 badges like 'Hot Lead', 'VIP', etc.
 });
 
 export const insertJobSchema = createInsertSchema(jobs, {
