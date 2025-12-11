@@ -130,6 +130,12 @@ export async function registerRoutes(
           const contact = await sm8Client.fetchJobContact(sm8Job.uuid);
           if (contact && (contact.first || contact.last)) {
             customerName = `${contact.first} ${contact.last}`.trim();
+          } else if (sm8Job.company_uuid) {
+            // Fall back to company name if no job contact
+            const company = await sm8Client.fetchCompany(sm8Job.company_uuid);
+            if (company && company.name) {
+              customerName = company.name;
+            }
           }
           
           const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName);
