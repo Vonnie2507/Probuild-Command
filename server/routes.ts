@@ -104,6 +104,12 @@ export async function registerRoutes(
       if (!updatedJob) {
         return res.status(404).json({ error: "Job not found" });
       }
+      
+      // If workTypeId was set, initialize stages for this job
+      if (partialJob.workTypeId) {
+        await storage.initializeJobStages(jobId, partialJob.workTypeId);
+      }
+      
       res.json(updatedJob);
     } catch (error) {
       console.error("Error updating job:", error);

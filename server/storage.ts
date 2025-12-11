@@ -241,13 +241,32 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateJobStageProgress(jobId: number, stageId: number, updateData: Partial<InsertJobStageProgress>): Promise<JobStageProgress | undefined> {
+    // First try to update existing record
     const data: any = { ...updateData, updatedAt: new Date() };
-    const [progress] = await db
+    const [existing] = await db
       .update(jobStageProgress)
       .set(data)
       .where(and(eq(jobStageProgress.jobId, jobId), eq(jobStageProgress.stageId, stageId)))
       .returning();
-    return progress || undefined;
+    
+    if (existing) return existing;
+    
+    // If no existing record, create one
+    const insertData: any = { 
+      jobId, 
+      stageId, 
+      status: updateData.status || 'pending',
+      ...updateData 
+    };
+    if (updateData.status === 'completed') {
+      insertData.completedAt = new Date();
+    }
+    
+    const [created] = await db
+      .insert(jobStageProgress)
+      .values(insertData)
+      .returning();
+    return created;
   }
 
   async initializeJobStages(jobId: number, workTypeId: number): Promise<void> {

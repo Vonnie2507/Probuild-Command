@@ -8,9 +8,42 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Play, Pause, CheckSquare, Package } from "lucide-react";
+import { Play, Pause, CheckSquare, Package, Loader2, Wrench } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+interface WorkType {
+  id: number;
+  name: string;
+  description?: string;
+  color: string;
+  isDefault: boolean;
+  isActive: boolean;
+}
+
+interface WorkTypeStage {
+  id: number;
+  workTypeId: number;
+  name: string;
+  key: string;
+  orderIndex: number;
+  category: string;
+  description?: string;
+}
+
+interface StageProgress {
+  id: number;
+  jobId: number;
+  stageId: number;
+  status: string;
+  completedAt?: string;
+  completedBy?: string;
+  notes?: string;
+  timerRunning: boolean;
+  timerStartedAt?: string;
+  totalTimeSeconds: number;
+}
 
 interface ProductionDashboardProps {
   jobs: Job[];
@@ -35,6 +68,7 @@ export function ProductionDashboard({ jobs, onJobMove }: ProductionDashboardProp
   const { staff } = useSettings();
   const [timers, setTimers] = useState<Record<string, TimerState>>({});
   const [tick, setTick] = useState(0);
+  const queryClient = useQueryClient();
 
   // Filter to only production and install staff
   const productionStaff = staff.filter(s => s.role === 'production' && s.active);
@@ -44,6 +78,83 @@ export function ProductionDashboard({ jobs, onJobMove }: ProductionDashboardProp
     (j.lifecyclePhase === 'work_order' || j.status === 'work_order' || j.status === 'deposit_paid') &&
     j.status !== 'complete'
   );
+  
+  // Fetch work types with their stages
+  const { data: workTypesWithStages = {} } = useQuery<Record<number, { workType: WorkType; stages: WorkTypeStage[] }>>({
+    queryKey: ["workTypesWithStages"],
+    queryFn: async () => {
+      const res = await fetch("/api/work-types");
+      if (!res.ok) throw new Error("Failed to fetch work types");
+      const workTypes: WorkType[] = await res.json();
+      
+      const result: Record<number, { workType: WorkType; stages: WorkTypeStage[] }> = {};
+      
+      for (const wt of workTypes) {
+        const stagesRes = await fetch(`/api/work-types/${wt.id}/stages`);
+        if (stagesRes.ok) {
+          const stages: WorkTypeStage[] = await stagesRes.json();
+          result[wt.id] = { workType: wt, stages: stages.sort((a, b) => a.orderIndex - b.orderIndex) };
+        }
+      }
+      
+      return result;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  
+  // Fetch stage progress for all production jobs
+  const { data: stageProgressMap = {} } = useQuery<Record<string, StageProgress[]>>({
+    queryKey: ["stageProgress", productionJobs.map(j => j.id).join(",")],
+    queryFn: async () => {
+      const result: Record<string, StageProgress[]> = {};
+      
+      for (const job of productionJobs) {
+        if (job.workTypeId) {
+          const res = await fetch(`/api/jobs/${job.id}/stage-progress`);
+          if (res.ok) {
+            result[job.id] = await res.json();
+          }
+        }
+      }
+      
+      return result;
+    },
+    staleTime: 30 * 1000,
+  });
+  
+  // Mutation to update stage progress
+  const updateStageMutation = useMutation({
+    mutationFn: async ({ jobId, stageId, status }: { jobId: number; stageId: number; status: string }) => {
+      const res = await fetch(`/api/jobs/${jobId}/stage-progress/${stageId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error("Failed to update stage");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["stageProgress"] });
+    },
+  });
+  
+  const toggleStageComplete = (jobId: number, stageId: number, currentStatus: string) => {
+    const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
+    updateStageMutation.mutate({ jobId, stageId, status: newStatus });
+  };
+  
+  const getStageStatus = (jobId: string, stageId: number): string => {
+    const progress = stageProgressMap[jobId];
+    if (!progress) return 'pending';
+    const stage = progress.find(p => p.stageId === stageId);
+    return stage?.status || 'pending';
+  };
+  
+  const getCompletedStagesCount = (jobId: string, stages: WorkTypeStage[]): number => {
+    const progress = stageProgressMap[jobId];
+    if (!progress) return 0;
+    return progress.filter(p => p.status === 'completed').length;
+  };
 
   // Update tick every second to refresh running timers
   useEffect(() => {
@@ -186,31 +297,68 @@ export function ProductionDashboard({ jobs, onJobMove }: ProductionDashboardProp
                 </div>
               </CardHeader>
               <CardContent className="flex-1 flex flex-col gap-4">
-                {/* Task List */}
+                {/* Work Type Badge */}
+                {job.workTypeId && workTypesWithStages[job.workTypeId] && (
+                  <div className="flex items-center gap-2">
+                    <Wrench className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Badge variant="outline" className="text-xs font-medium">
+                      {workTypesWithStages[job.workTypeId].workType.name}
+                    </Badge>
+                  </div>
+                )}
+                
+                {/* Task List - Show stages from work type */}
                 <div className="space-y-2 bg-muted/30 p-2 rounded-md border border-border/50">
                   <div className="flex items-center justify-between text-xs font-medium text-muted-foreground mb-1">
-                    <span>Task Checklist</span>
-                    <span>{job.productionTasks.filter(t => t.completed).length}/{job.productionTasks.length}</span>
+                    <span>Production Tasks</span>
+                    {job.workTypeId && workTypesWithStages[job.workTypeId] && (
+                      <span>
+                        {getCompletedStagesCount(job.id, workTypesWithStages[job.workTypeId].stages)}/
+                        {workTypesWithStages[job.workTypeId].stages.length}
+                      </span>
+                    )}
                   </div>
-                  {job.productionTasks.length === 0 ? (
-                    <div className="text-xs text-muted-foreground italic py-2">No tasks assigned</div>
+                  
+                  {!job.workTypeId ? (
+                    <div className="text-xs text-muted-foreground italic py-2 flex items-center gap-2">
+                      <Wrench className="h-3 w-3" />
+                      No job type assigned - select one in the job card
+                    </div>
+                  ) : !workTypesWithStages[job.workTypeId] ? (
+                    <div className="text-xs text-muted-foreground italic py-2 flex items-center gap-2">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Loading tasks...
+                    </div>
+                  ) : workTypesWithStages[job.workTypeId].stages.length === 0 ? (
+                    <div className="text-xs text-muted-foreground italic py-2">
+                      No tasks configured for this job type
+                    </div>
                   ) : (
-                    job.productionTasks.map(task => (
-                      <div key={task.id} className="flex items-center gap-2">
-                        <div className={cn(
-                          "h-4 w-4 rounded border flex items-center justify-center cursor-pointer transition-colors",
-                          task.completed ? "bg-primary border-primary text-primary-foreground" : "bg-background border-input hover:border-primary"
-                        )}>
-                          {task.completed && <CheckSquare className="h-3 w-3" />}
+                    workTypesWithStages[job.workTypeId].stages.map(stage => {
+                      const status = getStageStatus(job.id, stage.id);
+                      const isCompleted = status === 'completed';
+                      
+                      return (
+                        <div key={stage.id} className="flex items-center gap-2">
+                          <div 
+                            className={cn(
+                              "h-4 w-4 rounded border flex items-center justify-center cursor-pointer transition-colors",
+                              isCompleted ? "bg-primary border-primary text-primary-foreground" : "bg-background border-input hover:border-primary"
+                            )}
+                            onClick={() => toggleStageComplete(parseInt(job.id), stage.id, status)}
+                            data-testid={`stage-checkbox-${job.id}-${stage.id}`}
+                          >
+                            {isCompleted && <CheckSquare className="h-3 w-3" />}
+                          </div>
+                          <span className={cn("text-xs flex-1", isCompleted && "text-muted-foreground line-through")}>
+                            {stage.name}
+                          </span>
+                          <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 capitalize">
+                            {stage.category}
+                          </Badge>
                         </div>
-                        <span className={cn("text-xs flex-1", task.completed && "text-muted-foreground line-through")}>
-                          {task.name}
-                        </span>
-                        <Avatar className="h-5 w-5">
-                          <AvatarFallback className="text-[9px] bg-indigo-100 text-indigo-700">CW</AvatarFallback>
-                        </Avatar>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
 
