@@ -403,6 +403,227 @@ export class ServiceM8Client {
     return commMap;
   }
 
+  // Fetch job activity log (internal notes, updates, staff comments)
+  async fetchJobActivity(jobUuid: string): Promise<Array<{
+    timestamp: string;
+    type: "internal_note" | "sms" | "email" | "call" | "system" | "update";
+    author: string;
+    message: string;
+  }>> {
+    const activities: Array<{
+      timestamp: string;
+      type: "internal_note" | "sms" | "email" | "call" | "system" | "update";
+      author: string;
+      message: string;
+    }> = [];
+    
+    try {
+      const response = await fetch(`${this.baseUrl}/jobactivity.json?%24filter=job_uuid%20eq%20'${jobUuid}'`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (!response.ok) {
+        console.log(`[Activity] Failed to fetch job activity: ${response.status}`);
+        return activities;
+      }
+      
+      const items = await response.json();
+      console.log(`[Activity] Fetched ${items.length} activity items for job ${jobUuid}`);
+      
+      for (const item of items) {
+        const activityType = (item.activity_type || item.type || '').toLowerCase();
+        const timestamp = item.timestamp || item.created_date || item.edit_date || '';
+        const author = item.staff_name || item.created_by_staff_name || item.author || 'System';
+        const message = item.activity_text || item.comment || item.note || item.description || '';
+        
+        let type: "internal_note" | "sms" | "email" | "call" | "system" | "update" = 'system';
+        
+        if (activityType.includes('note') || activityType.includes('comment')) {
+          type = 'internal_note';
+        } else if (activityType.includes('sms') || activityType.includes('text')) {
+          type = 'sms';
+        } else if (activityType.includes('email')) {
+          type = 'email';
+        } else if (activityType.includes('call') || activityType.includes('phone')) {
+          type = 'call';
+        } else if (activityType.includes('update') || activityType.includes('change') || activityType.includes('status')) {
+          type = 'update';
+        }
+        
+        activities.push({ timestamp, type, author, message });
+      }
+    } catch (e) {
+      console.error("[Activity] Error fetching job activity:", e);
+    }
+    
+    return activities;
+  }
+
+  // Fetch client communications (emails, SMS, messages)
+  async fetchJobCommunications(jobUuid: string): Promise<Array<{
+    timestamp: string;
+    type: "internal_note" | "sms" | "email" | "call" | "system" | "update";
+    author: string;
+    message: string;
+  }>> {
+    const communications: Array<{
+      timestamp: string;
+      type: "internal_note" | "sms" | "email" | "call" | "system" | "update";
+      author: string;
+      message: string;
+    }> = [];
+    
+    try {
+      // Try the clientcommunication endpoint
+      const response = await fetch(`${this.baseUrl}/clientcommunication.json?%24filter=job_uuid%20eq%20'${jobUuid}'`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (!response.ok) {
+        console.log(`[Comms] clientcommunication endpoint returned ${response.status}, trying feeditem`);
+        // Fallback to feeditem endpoint filtered by job
+        return this.fetchJobCommunicationsFromFeed(jobUuid);
+      }
+      
+      const items = await response.json();
+      console.log(`[Comms] Fetched ${items.length} communication items for job ${jobUuid}`);
+      
+      for (const item of items) {
+        const commType = (item.communication_type || item.type || '').toLowerCase();
+        const timestamp = item.timestamp || item.sent_date || item.created_date || '';
+        const direction = (item.direction || '').toLowerCase();
+        const authorName = direction === 'inbound' || direction === 'received' 
+          ? (item.from_name || item.customer_name || 'Customer')
+          : (item.staff_name || item.from_name || 'Staff');
+        const message = item.message || item.body || item.subject || item.content || '';
+        
+        let type: "internal_note" | "sms" | "email" | "call" | "system" | "update" = 'email';
+        
+        if (commType.includes('sms') || commType.includes('text')) {
+          type = 'sms';
+        } else if (commType.includes('email')) {
+          type = 'email';
+        } else if (commType.includes('call') || commType.includes('phone')) {
+          type = 'call';
+        }
+        
+        communications.push({ timestamp, type, author: authorName, message });
+      }
+    } catch (e) {
+      console.error("[Comms] Error fetching client communications:", e);
+    }
+    
+    return communications;
+  }
+
+  // Fallback: fetch communications from feed items
+  private async fetchJobCommunicationsFromFeed(jobUuid: string): Promise<Array<{
+    timestamp: string;
+    type: "internal_note" | "sms" | "email" | "call" | "system" | "update";
+    author: string;
+    message: string;
+  }>> {
+    const communications: Array<{
+      timestamp: string;
+      type: "internal_note" | "sms" | "email" | "call" | "system" | "update";
+      author: string;
+      message: string;
+    }> = [];
+    
+    try {
+      const response = await fetch(`${this.baseUrl}/feeditem.json?%24filter=related_object_uuid%20eq%20'${jobUuid}'&%24orderby=timestamp%20desc`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (!response.ok) {
+        console.log(`[Comms] feeditem endpoint returned ${response.status}`);
+        return communications;
+      }
+      
+      const items = await response.json();
+      console.log(`[Comms] Fetched ${items.length} feed items for job ${jobUuid}`);
+      
+      for (const item of items) {
+        const itemType = (item.type || '').toLowerCase();
+        const timestamp = item.timestamp || '';
+        const author = item.staff_name || item.author || 'System';
+        const message = item.message || item.description || item.body || '';
+        
+        let type: "internal_note" | "sms" | "email" | "call" | "system" | "update" = 'system';
+        
+        if (itemType.includes('note') || itemType.includes('comment')) {
+          type = 'internal_note';
+        } else if (itemType.includes('sms')) {
+          type = 'sms';
+        } else if (itemType.includes('email')) {
+          type = 'email';
+        } else if (itemType.includes('call') || itemType.includes('phone')) {
+          type = 'call';
+        } else if (itemType.includes('status') || itemType.includes('update') || itemType.includes('change')) {
+          type = 'update';
+        }
+        
+        if (message) {
+          communications.push({ timestamp, type, author, message });
+        }
+      }
+    } catch (e) {
+      console.error("[Comms] Error fetching feed items:", e);
+    }
+    
+    return communications;
+  }
+
+  // Get full communication history for a job - combines activity and communications
+  async getJobCommunicationHistory(jobUuid: string): Promise<Array<{
+    timestamp: string;
+    type: "internal_note" | "sms" | "email" | "call" | "system" | "update";
+    author: string;
+    message: string;
+  }>> {
+    // Fetch both activity and communications in parallel
+    const [activities, communications] = await Promise.all([
+      this.fetchJobActivity(jobUuid),
+      this.fetchJobCommunications(jobUuid),
+    ]);
+    
+    // Combine and deduplicate (based on timestamp + message hash)
+    const seen = new Set<string>();
+    const combined: Array<{
+      timestamp: string;
+      type: "internal_note" | "sms" | "email" | "call" | "system" | "update";
+      author: string;
+      message: string;
+    }> = [];
+    
+    for (const item of [...activities, ...communications]) {
+      const key = `${item.timestamp}-${item.message.substring(0, 50)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        combined.push(item);
+      }
+    }
+    
+    // Sort by timestamp descending (newest first)
+    combined.sort((a, b) => {
+      const dateA = new Date(a.timestamp).getTime() || 0;
+      const dateB = new Date(b.timestamp).getTime() || 0;
+      return dateB - dateA;
+    });
+    
+    console.log(`[History] Combined ${combined.length} items for job ${jobUuid}`);
+    return combined;
+  }
+
   // Bulk fetch all companies in one API call
   async fetchAllCompanies(): Promise<Map<string, string>> {
     const companyMap = new Map<string, string>();

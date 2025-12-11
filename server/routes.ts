@@ -111,6 +111,26 @@ export async function registerRoutes(
     }
   });
 
+  // Get job communication history from ServiceM8
+  app.get("/api/jobs/:uuid/communications", async (req, res) => {
+    try {
+      const jobUuid = req.params.uuid;
+      
+      const sm8Client = createServiceM8Client();
+      if (!sm8Client) {
+        return res.status(400).json({ 
+          error: "ServiceM8 API key not configured. Please set SERVICEM8_API_KEY environment variable." 
+        });
+      }
+      
+      const history = await sm8Client.getJobCommunicationHistory(jobUuid);
+      res.json(history);
+    } catch (error) {
+      console.error("Error fetching job communications:", error);
+      res.status(500).json({ error: "Failed to fetch job communication history" });
+    }
+  });
+
   // Get all staff
   app.get("/api/staff", async (req, res) => {
     try {
