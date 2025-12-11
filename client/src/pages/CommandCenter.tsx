@@ -52,6 +52,7 @@ function mapDbJobToJob(dbJob: SelectJob): Job {
     panelInstallCrewSize: dbJob.panelInstallCrewSize || 2,
     salesStage: dbJob.salesStage || "new_lead",
     badges: dbJob.badges || [],
+    workTypeId: dbJob.workTypeId ?? undefined,
   };
 }
 
