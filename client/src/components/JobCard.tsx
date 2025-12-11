@@ -57,8 +57,8 @@ export function JobCard({ job, index }: JobCardProps) {
 
   return (
     <>
-    <Draggable draggableId={job.id} index={index}>
-      {(provided, snapshot) => (
+      <Draggable draggableId={job.id} index={index}>
+        {(provided, snapshot) => (
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
@@ -198,10 +198,10 @@ export function JobCard({ job, index }: JobCardProps) {
             </CardFooter>
           </Card>
         </div>
-      )}
-    </Draggable>
-    
-    <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        )}
+      </Draggable>
+      
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
@@ -350,7 +350,7 @@ export function JobCard({ job, index }: JobCardProps) {
           )}
         </div>
       </DialogContent>
-    </Dialog>
-  </>
+      </Dialog>
+    </>
   );
 }
