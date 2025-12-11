@@ -11,7 +11,7 @@ const SM8_OAUTH_CONFIG = {
   tokenUrl: "https://go.servicem8.com/oauth/access_token",
   clientId: process.env.SERVICEM8_CLIENT_ID || "",
   clientSecret: process.env.SERVICEM8_CLIENT_SECRET || "",
-  scopes: "read_jobs read_schedule manage_schedule read_messages read_job_notes read_staff read_clients",
+  scopes: "read_jobs read_schedule manage_schedule read_job_notes read_staff read_customers",
 };
 
 // Helper function to get a valid OAuth token, refreshing if needed
