@@ -1,10 +1,14 @@
 import type { Express } from "express";
+import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { createServiceM8Client } from "./servicem8";
 import { insertJobSchema, insertStaffSchema } from "@shared/schema";
 import { z } from "zod";
 
-export function registerRoutes(app: Express) {
+export async function registerRoutes(
+  httpServer: Server,
+  app: Express
+): Promise<Server> {
   // Get all jobs
   app.get("/api/jobs", async (req, res) => {
     try {
@@ -160,4 +164,6 @@ export function registerRoutes(app: Express) {
       res.status(500).json({ error: "Failed to fetch sync status" });
     }
   });
+
+  return httpServer;
 }
