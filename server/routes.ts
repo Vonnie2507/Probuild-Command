@@ -117,20 +117,168 @@ export async function registerRoutes(
     }
   });
 
-  // Get job communication history from ServiceM8
+  // Get job communication history from ServiceM8 (uses OAuth or API key)
   app.get("/api/jobs/:uuid/communications", async (req, res) => {
     try {
       const jobUuid = req.params.uuid;
-      
-      const sm8Client = createServiceM8Client();
-      if (!sm8Client) {
-        return res.status(400).json({ 
-          error: "ServiceM8 API key not configured. Please set SERVICEM8_API_KEY environment variable." 
+
+      // Try OAuth first, then fall back to API key
+      const token = await getValidOAuthToken();
+      const apiKey = process.env.SERVICEM8_API_KEY;
+
+      if (!token && !apiKey) {
+        return res.status(401).json({
+          error: "ServiceM8 not connected. Please connect via Settings or set SERVICEM8_API_KEY."
         });
       }
-      
-      const history = await sm8Client.getJobCommunicationHistory(jobUuid);
-      res.json(history);
+
+      const headers = token
+        ? { "Authorization": `Bearer ${token.accessToken}`, "Accept": "application/json" }
+        : { "X-API-Key": apiKey!, "Accept": "application/json" };
+
+      const baseUrl = "https://api.servicem8.com/api_1.0";
+
+      // Fetch from multiple endpoints in parallel to get all communications
+      const [feedRes, notesRes, activityRes] = await Promise.all([
+        fetch(`${baseUrl}/feeditem.json?%24filter=related_object_uuid%20eq%20'${jobUuid}'&%24orderby=timestamp%20desc&%24top=100`, { headers }),
+        fetch(`${baseUrl}/note.json?%24filter=related_object_uuid%20eq%20'${jobUuid}'&%24orderby=timestamp%20desc&%24top=100`, { headers }),
+        fetch(`${baseUrl}/jobactivity.json?%24filter=job_uuid%20eq%20'${jobUuid}'&%24orderby=timestamp%20desc&%24top=100`, { headers })
+      ]);
+
+      const communications: Array<{
+        timestamp: string;
+        type: "internal_note" | "sms" | "email" | "call" | "system" | "update" | "note";
+        author: string;
+        message: string;
+        direction?: "inbound" | "outbound" | "unknown";
+      }> = [];
+
+      // Process feed items (SMS, emails, system messages)
+      if (feedRes.ok) {
+        const feedItems = await feedRes.json();
+        console.log(`[Comms] Fetched ${feedItems.length} feed items for job ${jobUuid}`);
+
+        for (const item of feedItems) {
+          const itemType = (item.type || '').toLowerCase();
+          const message = item.message || item.description || '';
+          let type: typeof communications[0]['type'] = 'system';
+          let direction: "inbound" | "outbound" | "unknown" = 'unknown';
+
+          // Determine type and direction
+          if (itemType.includes('sms')) {
+            type = 'sms';
+            direction = itemType.includes('received') || itemType.includes('inbound') ? 'inbound' : 'outbound';
+          } else if (itemType.includes('email')) {
+            type = 'email';
+            direction = itemType.includes('received') || itemType.includes('inbound') ? 'inbound' : 'outbound';
+          } else if (itemType.includes('call') || itemType.includes('phone')) {
+            type = 'call';
+          } else if (itemType.includes('note')) {
+            type = 'internal_note';
+          } else if (itemType.includes('quote')) {
+            type = 'email';
+            direction = 'outbound';
+          }
+
+          if (message) {
+            communications.push({
+              timestamp: item.timestamp || item.created_date || '',
+              type,
+              author: item.staff_name || item.author || 'System',
+              message,
+              direction
+            });
+          }
+        }
+      }
+
+      // Process notes
+      if (notesRes.ok) {
+        const notes = await notesRes.json();
+        console.log(`[Comms] Fetched ${notes.length} notes for job ${jobUuid}`);
+
+        for (const note of notes) {
+          const noteText = (note.note || '').toLowerCase();
+          let type: typeof communications[0]['type'] = 'note';
+          let direction: "inbound" | "outbound" | "unknown" = 'unknown';
+
+          // Try to detect if note mentions email/sms
+          if (noteText.includes('email')) {
+            type = 'email';
+            if (noteText.includes('received') || noteText.includes('from customer') || noteText.includes('incoming')) {
+              direction = 'inbound';
+            } else if (noteText.includes('sent') || noteText.includes('to customer')) {
+              direction = 'outbound';
+            }
+          } else if (noteText.includes('sms') || noteText.includes('text message')) {
+            type = 'sms';
+            if (noteText.includes('received') || noteText.includes('from customer') || noteText.includes('incoming')) {
+              direction = 'inbound';
+            } else if (noteText.includes('sent') || noteText.includes('to customer')) {
+              direction = 'outbound';
+            }
+          } else if (noteText.includes('call') || noteText.includes('phone') || noteText.includes('spoke')) {
+            type = 'call';
+          }
+
+          communications.push({
+            timestamp: note.timestamp || note.create_date || '',
+            type,
+            author: note.created_by_staff_name || 'Staff',
+            message: note.note || '',
+            direction
+          });
+        }
+      }
+
+      // Process job activities
+      if (activityRes.ok) {
+        const activities = await activityRes.json();
+        console.log(`[Comms] Fetched ${activities.length} activities for job ${jobUuid}`);
+
+        for (const activity of activities) {
+          const activityType = (activity.activity_type || '').toLowerCase();
+          let type: typeof communications[0]['type'] = 'system';
+
+          if (activityType.includes('sms')) {
+            type = 'sms';
+          } else if (activityType.includes('email')) {
+            type = 'email';
+          } else if (activityType.includes('call')) {
+            type = 'call';
+          } else if (activityType.includes('note')) {
+            type = 'internal_note';
+          }
+
+          if (activity.description) {
+            communications.push({
+              timestamp: activity.timestamp || activity.start_date || '',
+              type,
+              author: activity.staff_name || 'Staff',
+              message: activity.description || `Activity: ${activity.activity_type}`
+            });
+          }
+        }
+      }
+
+      // Remove duplicates (by timestamp + message start) and sort
+      const seen = new Set<string>();
+      const uniqueComms = communications.filter(c => {
+        const key = `${c.timestamp}-${c.message.substring(0, 30)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      // Sort by timestamp descending
+      uniqueComms.sort((a, b) => {
+        const dateA = new Date(a.timestamp).getTime() || 0;
+        const dateB = new Date(b.timestamp).getTime() || 0;
+        return dateB - dateA;
+      });
+
+      console.log(`[Comms] Returning ${uniqueComms.length} communications for job ${jobUuid}`);
+      res.json(uniqueComms);
     } catch (error) {
       console.error("Error fetching job communications:", error);
       res.status(500).json({ error: "Failed to fetch job communication history" });

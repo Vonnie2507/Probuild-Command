@@ -54,6 +54,7 @@ interface CommunicationItem {
   type: 'note' | 'activity' | 'email' | 'sms' | 'call';
   content: string;
   staffName?: string;
+  direction?: 'inbound' | 'outbound' | 'unknown';
 }
 
 interface JobCardProps {
@@ -155,58 +156,34 @@ export function JobCard({ job, index }: JobCardProps) {
     if (detailsOpen && job.serviceM8Uuid) {
       setLoadingNotes(true);
       setNotesError(null);
-      fetch(`/api/servicem8/job-history/${job.serviceM8Uuid}`)
+
+      // Use the communications endpoint which fetches feed items, notes, and activities
+      fetch(`/api/jobs/${job.serviceM8Uuid}/communications`)
         .then(async res => {
           if (!res.ok) {
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
             throw new Error(data.error || `Error ${res.status}`);
           }
           return res.json();
         })
         .then(data => {
-          const items: CommunicationItem[] = [];
-          
-          // Process notes
-          if (Array.isArray(data.notes)) {
-            for (const note of data.notes) {
-              const noteText = (note.note || '').toLowerCase();
-              let commType: CommunicationItem['type'] = 'note';
-              if (noteText.includes('email') || noteText.includes('sent email')) {
-                commType = 'email';
-              } else if (noteText.includes('sms') || noteText.includes('text')) {
-                commType = 'sms';
-              } else if (noteText.includes('call') || noteText.includes('phone') || noteText.includes('spoke') || noteText.includes('rang')) {
-                commType = 'call';
-              }
-              
-              items.push({
-                uuid: note.uuid,
-                date: note.create_date?.replace(' ', 'T') || new Date().toISOString(),
-                type: commType,
-                content: note.note || '',
-                staffName: note.created_by_staff_name
-              });
-            }
-          }
-          
-          // Process activities (scheduled visits, etc.)
-          if (Array.isArray(data.activities)) {
-            for (const activity of data.activities) {
-              items.push({
-                uuid: activity.uuid,
-                date: activity.start_date?.replace(' ', 'T') || new Date().toISOString(),
-                type: 'activity',
-                content: `Scheduled activity: ${activity.start_date} - ${activity.end_date}`
-              });
-            }
-          }
-          
-          // Sort by date descending
-          items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          // Data comes pre-formatted from the API
+          const items: CommunicationItem[] = (data || []).map((item: any, idx: number) => ({
+            uuid: `comm-${idx}`,
+            date: item.timestamp?.replace(' ', 'T') || new Date().toISOString(),
+            type: item.type === 'internal_note' ? 'note' :
+                  item.type === 'system' ? 'note' :
+                  item.type === 'update' ? 'note' :
+                  item.type as CommunicationItem['type'],
+            content: item.message || '',
+            staffName: item.author,
+            direction: item.direction
+          }));
+
           setCommunications(items);
         })
         .catch(err => {
-          console.error("Failed to fetch job history:", err);
+          console.error("Failed to fetch job communications:", err);
           setNotesError(err.message || "Failed to load communication history");
         })
         .finally(() => setLoadingNotes(false));
@@ -903,10 +880,15 @@ export function JobCard({ job, index }: JobCardProps) {
               ) : (
                 <div className="space-y-3">
                   {communications.map((item) => (
-                    <div key={item.uuid} className="flex gap-3 p-2 bg-muted/30 rounded-md">
+                    <div key={item.uuid} className={cn(
+                      "flex gap-3 p-2 rounded-md",
+                      item.direction === 'inbound' ? "bg-green-50 border-l-2 border-green-400" :
+                      item.direction === 'outbound' ? "bg-blue-50 border-l-2 border-blue-400" :
+                      "bg-muted/30"
+                    )}>
                       <div className="mt-0.5">{getCommIcon(item)}</div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <span className="text-xs font-medium text-muted-foreground">
                             {item.date ? format(new Date(item.date), 'dd MMM yyyy, h:mm a') : 'Unknown date'}
                           </span>
@@ -916,6 +898,16 @@ export function JobCard({ job, index }: JobCardProps) {
                           <Badge variant="outline" className="text-[10px] px-1 py-0">
                             {item.type}
                           </Badge>
+                          {item.direction === 'inbound' && (
+                            <Badge variant="secondary" className="text-[10px] px-1 py-0 bg-green-100 text-green-700">
+                              From Client
+                            </Badge>
+                          )}
+                          {item.direction === 'outbound' && (
+                            <Badge variant="secondary" className="text-[10px] px-1 py-0 bg-blue-100 text-blue-700">
+                              To Client
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm whitespace-pre-wrap break-words">{item.content}</p>
                       </div>
