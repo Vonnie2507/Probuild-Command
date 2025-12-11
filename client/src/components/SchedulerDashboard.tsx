@@ -214,7 +214,9 @@ export function SchedulerDashboard({ jobs }: SchedulerDashboardProps) {
                   <div className={cn("p-2 text-center border-b font-medium text-sm", isToday && "text-primary font-bold")}>
                     {format(day, "EEE d")}
                     <div className="mt-1.5 flex items-center gap-1.5 justify-center">
-                       <Progress value={capacityPercent} className={cn("h-1.5 w-16", isOverCapacity ? "bg-red-100" : "bg-muted")} indicatorClassName={cn(isOverCapacity ? "bg-red-500" : capacityPercent > 80 ? "bg-orange-500" : "bg-green-500")} />
+                       <div className={cn("h-1.5 w-16 rounded-full overflow-hidden", isOverCapacity ? "bg-red-100" : "bg-muted")}>
+                         <div className={cn("h-full transition-all", isOverCapacity ? "bg-red-500" : capacityPercent > 80 ? "bg-orange-500" : "bg-green-500")} style={{ width: `${capacityPercent}%` }} />
+                       </div>
                        <span className={cn("text-[9px] font-mono", isOverCapacity ? "text-red-600 font-bold" : "text-muted-foreground")}>{totalBookedHours}h</span>
                     </div>
                   </div>
