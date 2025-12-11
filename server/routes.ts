@@ -98,7 +98,7 @@ export async function registerRoutes(
       const sm8Client = createServiceM8Client();
       if (!sm8Client) {
         return res.status(400).json({ 
-          error: "ServiceM8 not configured. Please set SERVICEM8_EMAIL and SERVICEM8_PASSWORD environment variables." 
+          error: "ServiceM8 not configured. Please set SERVICEM8_API_KEY environment variable." 
         });
       }
 
@@ -121,11 +121,11 @@ export async function registerRoutes(
           jobsProcessed++;
         }
 
-        await storage.updateJob(syncLog.id, {
+        await storage.updateSyncLog(syncLog.id, {
           status: "success",
           jobsProcessed,
           completedAt: new Date(),
-        } as any);
+        });
 
         res.json({ 
           success: true, 
@@ -135,12 +135,12 @@ export async function registerRoutes(
       } catch (syncError: any) {
         errorMessage = syncError.message;
         
-        await storage.updateJob(syncLog.id, {
+        await storage.updateSyncLog(syncLog.id, {
           status: "error",
           jobsProcessed,
           errorMessage,
           completedAt: new Date(),
-        } as any);
+        });
 
         res.status(500).json({ 
           error: "ServiceM8 sync failed",

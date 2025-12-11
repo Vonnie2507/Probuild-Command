@@ -16,23 +16,16 @@ interface ServiceM8Job {
 
 export class ServiceM8Client {
   private baseUrl = "https://api.servicem8.com/api_1.0";
-  private email: string;
-  private password: string;
+  private apiKey: string;
 
-  constructor(email: string, password: string) {
-    this.email = email;
-    this.password = password;
-  }
-
-  private getAuthHeader(): string {
-    const credentials = Buffer.from(`${this.email}:${this.password}`).toString("base64");
-    return `Basic ${credentials}`;
+  constructor(apiKey: string) {
+    this.apiKey = apiKey;
   }
 
   async fetchJobs(limit: number = 100): Promise<ServiceM8Job[]> {
     const response = await fetch(`${this.baseUrl}/job.json?%24filter=active%20eq%201&%24top=${limit}`, {
       headers: {
-        "Authorization": this.getAuthHeader(),
+        "X-API-Key": this.apiKey,
         "Content-Type": "application/json",
       },
     });
@@ -89,14 +82,13 @@ export class ServiceM8Client {
   }
 }
 
-export function createServiceM8Client(email?: string, password?: string): ServiceM8Client | null {
-  const apiEmail = email || process.env.SERVICEM8_EMAIL;
-  const apiPassword = password || process.env.SERVICEM8_PASSWORD;
+export function createServiceM8Client(apiKey?: string): ServiceM8Client | null {
+  const key = apiKey || process.env.SERVICEM8_API_KEY;
 
-  if (!apiEmail || !apiPassword) {
-    console.warn("ServiceM8 credentials not configured");
+  if (!key) {
+    console.warn("ServiceM8 API key not configured");
     return null;
   }
 
-  return new ServiceM8Client(apiEmail, apiPassword);
+  return new ServiceM8Client(key);
 }

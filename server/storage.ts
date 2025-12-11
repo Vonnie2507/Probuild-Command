@@ -19,6 +19,7 @@ export interface IStorage {
   
   // Sync Logs
   createSyncLog(log: InsertSyncLog): Promise<SyncLog>;
+  updateSyncLog(id: number, log: Partial<InsertSyncLog>): Promise<SyncLog | undefined>;
   getLatestSyncLog(): Promise<SyncLog | undefined>;
 }
 
@@ -92,6 +93,15 @@ export class DatabaseStorage implements IStorage {
   async createSyncLog(insertLog: InsertSyncLog): Promise<SyncLog> {
     const [log] = await db.insert(syncLog).values([insertLog]).returning();
     return log;
+  }
+
+  async updateSyncLog(id: number, updateData: Partial<InsertSyncLog>): Promise<SyncLog | undefined> {
+    const [log] = await db
+      .update(syncLog)
+      .set(updateData)
+      .where(eq(syncLog.id, id))
+      .returning();
+    return log || undefined;
   }
 
   async getLatestSyncLog(): Promise<SyncLog | undefined> {

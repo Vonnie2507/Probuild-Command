@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Pencil, Trash2, Plus, Save, X, User, GripVertical, Settings, Layers, Users } from "lucide-react";
+import { Pencil, Trash2, Plus, Save, X, User, GripVertical, Settings, Layers, Users, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ROLE_OPTIONS = [
@@ -597,9 +597,33 @@ function PipelineSettings() {
 function GeneralSettings() {
   const { appSettings, setAppSettings } = useSettings();
   const [form, setForm] = useState(appSettings);
+  const [saved, setSaved] = useState(false);
+  const [newStageName, setNewStageName] = useState("");
+  const [isAddingStage, setIsAddingStage] = useState(false);
 
   const handleSave = () => {
     setAppSettings(form);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleAddStage = () => {
+    if (!newStageName.trim()) return;
+    const newStage = {
+      id: `stage_${Date.now()}`,
+      title: newStageName.trim(),
+      order: form.installStages.length + 1
+    };
+    setForm({ ...form, installStages: [...form.installStages, newStage] });
+    setNewStageName("");
+    setIsAddingStage(false);
+  };
+
+  const handleDeleteStage = (stageId: string) => {
+    setForm({ 
+      ...form, 
+      installStages: form.installStages.filter(s => s.id !== stageId) 
+    });
   };
 
   return (
@@ -642,16 +666,67 @@ function GeneralSettings() {
                     newStages[index] = { ...stage, title: e.target.value };
                     setForm({ ...form, installStages: newStages });
                   }}
-                  className="h-8"
+                  className="h-8 flex-1"
+                  data-testid={`install-stage-${index}`}
                 />
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8 text-destructive hover:text-destructive"
+                  onClick={() => handleDeleteStage(stage.id)}
+                  data-testid={`delete-stage-${index}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
             ))}
+            
+            {isAddingStage ? (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="w-8 justify-center">{form.installStages.length + 1}</Badge>
+                <Input
+                  value={newStageName}
+                  onChange={(e) => setNewStageName(e.target.value)}
+                  placeholder="New stage name..."
+                  className="h-8 flex-1"
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddStage()}
+                  data-testid="new-stage-input"
+                />
+                <Button size="icon" className="h-8 w-8" onClick={handleAddStage}>
+                  <Check className="h-4 w-4" />
+                </Button>
+                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setIsAddingStage(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full mt-2"
+                onClick={() => setIsAddingStage(true)}
+                data-testid="add-install-stage-btn"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Stage
+              </Button>
+            )}
           </div>
         </div>
 
         <Button onClick={handleSave} className="w-full" data-testid="save-settings-btn">
-          <Save className="h-4 w-4 mr-2" />
-          Save Settings
+          {saved ? (
+            <>
+              <Check className="h-4 w-4 mr-2" />
+              Saved!
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" />
+              Save Settings
+            </>
+          )}
         </Button>
       </CardContent>
     </Card>
