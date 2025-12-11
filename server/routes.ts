@@ -122,11 +122,12 @@ export async function registerRoutes(
       let errorMessage = null;
 
       try {
-        // Bulk fetch all data in parallel for speed
-        const [sm8Jobs, contactMap, companyMap] = await Promise.all([
+        // Bulk fetch all data in parallel for speed (including custom fields for staff assignment)
+        const [sm8Jobs, contactMap, companyMap, customFieldMap] = await Promise.all([
           sm8Client.fetchJobs(),
           sm8Client.fetchAllJobContacts(),
-          sm8Client.fetchAllCompanies()
+          sm8Client.fetchAllCompanies(),
+          sm8Client.fetchAllJobCustomFields()
         ]);
         
         for (const sm8Job of sm8Jobs) {
@@ -149,7 +150,7 @@ export async function registerRoutes(
             }
           }
           
-          const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName);
+          const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName, customFieldMap);
           await storage.upsertJobByServiceM8Uuid(mappedJob);
           jobsProcessed++;
         }
@@ -467,10 +468,12 @@ async function runAutoSync() {
     let jobsProcessed = 0;
 
     try {
-      const [sm8Jobs, contactMap, companyMap] = await Promise.all([
+      // Bulk fetch all data in parallel (including custom fields for staff assignment)
+      const [sm8Jobs, contactMap, companyMap, customFieldMap] = await Promise.all([
         sm8Client.fetchJobs(),
         sm8Client.fetchAllJobContacts(),
-        sm8Client.fetchAllCompanies()
+        sm8Client.fetchAllCompanies(),
+        sm8Client.fetchAllJobCustomFields()
       ]);
       
       for (const sm8Job of sm8Jobs) {
@@ -493,7 +496,7 @@ async function runAutoSync() {
           }
         }
         
-        const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName);
+        const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName, customFieldMap);
         await storage.upsertJobByServiceM8Uuid(mappedJob);
         jobsProcessed++;
       }

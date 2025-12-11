@@ -137,21 +137,62 @@ export class ServiceM8Client {
     return companyMap;
   }
 
-  mapServiceM8JobToInsertJob(sm8Job: ServiceM8Job, companyName?: string): InsertJob {
+  // Fetch all job custom field values - custom fields are stored separately from jobs
+  // Returns a map of job_uuid -> { fieldName: value }
+  async fetchAllJobCustomFields(): Promise<Map<string, Record<string, string>>> {
+    const customFieldMap = new Map<string, Record<string, string>>();
+    try {
+      // Fetch all job custom field values
+      const response = await fetch(`${this.baseUrl}/jobcustomfield.json?%24top=10000`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) {
+        console.error("Failed to fetch job custom fields:", response.status);
+        return customFieldMap;
+      }
+      const customFields = await response.json();
+      console.log(`[CustomFields] Fetched ${customFields.length} custom field values`);
+      
+      // Group by job_uuid
+      for (const cf of customFields) {
+        if (cf.job_uuid && cf.field_name && cf.field_data) {
+          const existing = customFieldMap.get(cf.job_uuid) || {};
+          existing[cf.field_name] = cf.field_data;
+          customFieldMap.set(cf.job_uuid, existing);
+        }
+      }
+      
+      console.log(`[CustomFields] Mapped custom fields for ${customFieldMap.size} jobs`);
+    } catch (e) {
+      console.error("Error fetching job custom fields:", e);
+    }
+    return customFieldMap;
+  }
+
+  // Get staff assigned value for a specific job from custom fields map
+  getStaffAssigned(jobUuid: string, customFieldMap: Map<string, Record<string, string>>): string {
+    const jobFields = customFieldMap.get(jobUuid);
+    if (!jobFields) return "Unassigned";
+    
+    // Try various possible field names
+    const staffValue = jobFields['Staff Assigned'] || jobFields['staff_assigned'] || jobFields['Staff_Assigned'];
+    return staffValue || "Unassigned";
+  }
+
+  mapServiceM8JobToInsertJob(sm8Job: ServiceM8Job, companyName?: string, customFieldMap?: Map<string, Record<string, string>>): InsertJob {
     const address = sm8Job.job_address || sm8Job.billing_address || "No Address";
     const quoteValue = parseFloat(sm8Job.total_invoice_amount) || 0;
     
     // Determine lifecycle phase and scheduler stage based on ServiceM8 status
     const { lifecyclePhase, schedulerStage, appStatus } = this.mapServiceM8Status(sm8Job.status);
 
-    // Debug: Log all keys in the job to find the custom field name
-    console.log(`[DEBUG] Job ${sm8Job.generated_job_id} keys:`, Object.keys(sm8Job));
-    console.log(`[DEBUG] Job ${sm8Job.generated_job_id} full data:`, JSON.stringify(sm8Job, null, 2));
-
-    // Get staff assigned from ServiceM8 custom field "Staff Assigned"
-    // The field_name from ServiceM8 custom_fields API is "Staff Assigned" (with space)
-    const staffAssigned = sm8Job['Staff Assigned'] || sm8Job.staff_assigned || "Unassigned";
-    console.log(`[DEBUG] Job ${sm8Job.generated_job_id} staffAssigned value:`, staffAssigned);
+    // Get staff assigned from custom fields map (custom fields are stored separately in ServiceM8)
+    const staffAssigned = customFieldMap 
+      ? this.getStaffAssigned(sm8Job.uuid, customFieldMap) 
+      : "Unassigned";
 
     return {
       serviceM8Uuid: sm8Job.uuid,
