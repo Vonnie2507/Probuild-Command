@@ -202,6 +202,10 @@ export const jobStageProgress = pgTable("job_stage_progress", {
   completedBy: text("completed_by"),
   notes: text("notes"),
   subStageProgress: jsonb("sub_stage_progress").$type<{ id: string; completed: boolean; completedAt?: string }[]>(),
+  // Timer tracking
+  timerRunning: boolean("timer_running").notNull().default(false),
+  timerStartedAt: timestamp("timer_started_at"),
+  totalTimeSeconds: integer("total_time_seconds").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -261,6 +261,65 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  // Timer operations
+  async startTimer(jobId: number, stageId: number): Promise<JobStageProgress | undefined> {
+    const now = new Date();
+    const [progress] = await db
+      .update(jobStageProgress)
+      .set({ 
+        timerRunning: true, 
+        timerStartedAt: now,
+        status: 'in_progress',
+        updatedAt: now 
+      })
+      .where(and(eq(jobStageProgress.jobId, jobId), eq(jobStageProgress.stageId, stageId)))
+      .returning();
+    return progress || undefined;
+  }
+
+  async stopTimer(jobId: number, stageId: number): Promise<JobStageProgress | undefined> {
+    // First get current state to calculate elapsed time
+    const [current] = await db
+      .select()
+      .from(jobStageProgress)
+      .where(and(eq(jobStageProgress.jobId, jobId), eq(jobStageProgress.stageId, stageId)));
+    
+    if (!current || !current.timerRunning || !current.timerStartedAt) {
+      return current || undefined;
+    }
+    
+    const now = new Date();
+    const elapsed = Math.floor((now.getTime() - current.timerStartedAt.getTime()) / 1000);
+    const newTotal = (current.totalTimeSeconds || 0) + elapsed;
+    
+    const [progress] = await db
+      .update(jobStageProgress)
+      .set({ 
+        timerRunning: false, 
+        timerStartedAt: null,
+        totalTimeSeconds: newTotal,
+        updatedAt: now 
+      })
+      .where(and(eq(jobStageProgress.jobId, jobId), eq(jobStageProgress.stageId, stageId)))
+      .returning();
+    return progress || undefined;
+  }
+
+  async getOrCreateStageProgress(jobId: number, stageId: number): Promise<JobStageProgress> {
+    const [existing] = await db
+      .select()
+      .from(jobStageProgress)
+      .where(and(eq(jobStageProgress.jobId, jobId), eq(jobStageProgress.stageId, stageId)));
+    
+    if (existing) return existing;
+    
+    const [created] = await db
+      .insert(jobStageProgress)
+      .values({ jobId, stageId, status: 'pending' })
+      .returning();
+    return created;
+  }
+
   // App Settings
   async getAppSetting(key: string): Promise<any | undefined> {
     const [row] = await db.select().from(appSettings).where(eq(appSettings.key, key));
