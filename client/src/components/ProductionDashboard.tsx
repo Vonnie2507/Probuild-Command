@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { Job, PIPELINES, STAFF_MEMBERS } from "@/lib/mockData";
+import { Job, PIPELINES } from "@/lib/mockData";
+import { useSettings } from "@/lib/settingsContext";
 import { PipelineBoard } from "@/components/PipelineBoard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,8 +32,13 @@ function formatTime(totalSeconds: number): string {
 }
 
 export function ProductionDashboard({ jobs, onJobMove }: ProductionDashboardProps) {
+  const { staff } = useSettings();
   const [timers, setTimers] = useState<Record<string, TimerState>>({});
   const [tick, setTick] = useState(0);
+
+  // Filter to only production and install staff
+  const productionStaff = staff.filter(s => s.role === 'production' && s.active);
+  const installStaff = staff.filter(s => s.role === 'install' && s.active);
 
   const productionJobs = jobs.filter(j => 
     (j.lifecyclePhase === 'work_order' || j.status === 'work_order' || j.status === 'deposit_paid') &&
@@ -216,9 +222,13 @@ export function ProductionDashboard({ jobs, onJobMove }: ProductionDashboardProp
                         <SelectValue placeholder="Assignee" />
                       </SelectTrigger>
                       <SelectContent>
-                        {STAFF_MEMBERS.filter(s => s.role === 'production').map(staff => (
-                          <SelectItem key={staff.id} value={staff.id}>{staff.name}</SelectItem>
-                        ))}
+                        {productionStaff.length > 0 ? (
+                          productionStaff.map(s => (
+                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="unassigned">No production staff</SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
