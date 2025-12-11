@@ -20,7 +20,8 @@ export function ProductionDashboard({ jobs, onJobMove }: ProductionDashboardProp
   const [activeTimer, setActiveTimer] = useState<string | null>(null);
 
   const productionJobs = jobs.filter(j => 
-    PIPELINES.production.some(p => p.id === j.status) || j.status === 'deposit_paid'
+    (PIPELINES.production.some(p => p.id === j.status) || j.status === 'deposit_paid') &&
+    j.status !== 'complete'
   );
 
   const toggleTimer = (jobId: string) => {
