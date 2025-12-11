@@ -53,6 +53,8 @@ export const jobs = pgTable("jobs", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   syncedAt: timestamp("synced_at"),
+  workTypeId: integer("work_type_id"), // References work_types table for dynamic stages
+  currentStageId: integer("current_stage_id"), // Current active stage
 });
 
 export const insertJobSchema = createInsertSchema(jobs, {
@@ -131,3 +133,78 @@ export const insertOAuthTokenSchema = createInsertSchema(oauthTokens, {
 
 export type InsertOAuthToken = typeof oauthTokens.$inferInsert;
 export type OAuthToken = typeof oauthTokens.$inferSelect;
+
+// Work Types Table - Defines different job types (e.g., "Supply Only", "Supply & Install", "Supply & Install with Sliding Gate")
+export const workTypes = pgTable("work_types", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  color: text("color").notNull().default("blue"),
+  isDefault: boolean("is_default").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertWorkTypeSchema = createInsertSchema(workTypes, {
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional(),
+});
+
+export type InsertWorkType = typeof workTypes.$inferInsert;
+export type WorkType = typeof workTypes.$inferSelect;
+
+// Stage Categories - determines where the stage appears in the UI
+export const STAGE_CATEGORIES = ['purchase_order', 'production', 'install', 'external', 'admin'] as const;
+export type StageCategory = typeof STAGE_CATEGORIES[number];
+
+// Work Type Stages Table - Defines ordered stages for each work type
+export const workTypeStages = pgTable("work_type_stages", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  workTypeId: integer("work_type_id").notNull().references(() => workTypes.id, { onDelete: 'cascade' }),
+  name: text("name").notNull(),
+  key: text("key").notNull(), // Unique identifier like 'manufacture_posts', 'install_panels'
+  orderIndex: integer("order_index").notNull(),
+  category: text("category").notNull().default("production"), // 'purchase_order' | 'production' | 'install' | 'external' | 'admin'
+  description: text("description"),
+  triggersPurchaseOrder: boolean("triggers_purchase_order").notNull().default(false), // When checked, job appears in PO tab
+  triggersScheduler: boolean("triggers_scheduler").notNull().default(false), // When checked, job appears in scheduler for install
+  schedulerStageTarget: text("scheduler_stage_target"), // Which scheduler column to trigger (e.g., 'pending_posts')
+  estimatedDuration: integer("estimated_duration"), // Default duration in hours
+  requiredCrewSize: integer("required_crew_size"), // Default crew size
+  subStages: jsonb("sub_stages").$type<{ id: string; name: string; order: number }[]>(), // Sub-stages like "pickup from welders", "take to powder coaters"
+  dependsOnStageId: integer("depends_on_stage_id"), // Stage that must be completed before this one can start
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertWorkTypeStageSchema = createInsertSchema(workTypeStages, {
+  workTypeId: z.number(),
+  name: z.string().min(1, "Name is required"),
+  key: z.string().min(1, "Key is required"),
+  orderIndex: z.number(),
+});
+
+export type InsertWorkTypeStage = typeof workTypeStages.$inferInsert;
+export type WorkTypeStage = typeof workTypeStages.$inferSelect;
+
+// Job Stage Progress Table - Tracks completion of stages for each job
+export const jobStageProgress = pgTable("job_stage_progress", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  jobId: integer("job_id").notNull().references(() => jobs.id, { onDelete: 'cascade' }),
+  stageId: integer("stage_id").notNull().references(() => workTypeStages.id, { onDelete: 'cascade' }),
+  status: text("status").notNull().default("pending"), // 'pending' | 'in_progress' | 'completed' | 'skipped'
+  completedAt: timestamp("completed_at"),
+  completedBy: text("completed_by"),
+  notes: text("notes"),
+  subStageProgress: jsonb("sub_stage_progress").$type<{ id: string; completed: boolean; completedAt?: string }[]>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertJobStageProgressSchema = createInsertSchema(jobStageProgress, {
+  jobId: z.number(),
+  stageId: z.number(),
+});
+
+export type InsertJobStageProgress = typeof jobStageProgress.$inferInsert;
+export type JobStageProgress = typeof jobStageProgress.$inferSelect;

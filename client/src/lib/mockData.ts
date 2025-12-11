@@ -38,6 +38,9 @@ export interface Job {
   postInstallCrewSize: number;
   panelInstallDuration: number; // hours
   panelInstallCrewSize: number;
+  
+  // Work type for dynamic stage tracking
+  workTypeId?: number;
 }
 
 // Scheduler Kanban columns for work orders

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSettings, StaffMember, PipelineColumn, PipelineConfig } from "@/lib/settingsContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -8,8 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Pencil, Trash2, Plus, Save, X, User, GripVertical, Settings, Layers, Users, Check } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Pencil, Trash2, Plus, Save, X, User, GripVertical, Settings, Layers, Users, Check, Boxes, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { WorkType, WorkTypeStage, InsertWorkType, InsertWorkTypeStage } from "@shared/schema";
 
 const ROLE_OPTIONS = [
   { value: "sales", label: "Sales" },
@@ -37,10 +40,14 @@ const SKILL_OPTIONS = ["posts", "panels", "production"] as const;
 export function SettingsPanel() {
   return (
     <Tabs defaultValue="staff" className="w-full">
-      <TabsList className="grid w-full grid-cols-3 mb-4">
+      <TabsList className="grid w-full grid-cols-4 mb-4">
         <TabsTrigger value="staff" className="flex items-center gap-2">
           <Users className="h-4 w-4" />
           Staff
+        </TabsTrigger>
+        <TabsTrigger value="work-types" className="flex items-center gap-2">
+          <Boxes className="h-4 w-4" />
+          Work Types
         </TabsTrigger>
         <TabsTrigger value="pipelines" className="flex items-center gap-2">
           <Layers className="h-4 w-4" />
@@ -54,6 +61,10 @@ export function SettingsPanel() {
 
       <TabsContent value="staff">
         <StaffSettings />
+      </TabsContent>
+
+      <TabsContent value="work-types">
+        <WorkTypesSettings />
       </TabsContent>
 
       <TabsContent value="pipelines">
@@ -730,5 +741,494 @@ function GeneralSettings() {
         </Button>
       </CardContent>
     </Card>
+  );
+}
+
+const STAGE_CATEGORY_OPTIONS = [
+  { value: "purchase_order", label: "Purchase Order" },
+  { value: "production", label: "Production" },
+  { value: "install", label: "Install" },
+  { value: "external", label: "External" },
+  { value: "admin", label: "Admin" },
+];
+
+const STAGE_COLOR_OPTIONS = [
+  { value: "blue", label: "Blue" },
+  { value: "green", label: "Green" },
+  { value: "amber", label: "Amber" },
+  { value: "purple", label: "Purple" },
+  { value: "rose", label: "Rose" },
+  { value: "cyan", label: "Cyan" },
+  { value: "orange", label: "Orange" },
+  { value: "slate", label: "Slate" },
+];
+
+function WorkTypesSettings() {
+  const queryClient = useQueryClient();
+  const [selectedWorkType, setSelectedWorkType] = useState<WorkType | null>(null);
+  const [isAddingWorkType, setIsAddingWorkType] = useState(false);
+  const [isAddingStage, setIsAddingStage] = useState(false);
+  const [editingStageId, setEditingStageId] = useState<number | null>(null);
+  
+  const [newWorkTypeForm, setNewWorkTypeForm] = useState<Partial<InsertWorkType>>({
+    name: "",
+    description: "",
+    color: "blue",
+    isActive: true,
+  });
+  
+  const [newStageForm, setNewStageForm] = useState<Partial<InsertWorkTypeStage>>({
+    name: "",
+    category: "production",
+    triggersScheduler: false,
+    triggersPurchaseOrder: false,
+    subStages: [],
+  });
+  
+  const [editStageForm, setEditStageForm] = useState<Partial<WorkTypeStage>>({});
+
+  const { data: workTypes = [], isLoading } = useQuery<WorkType[]>({
+    queryKey: ["/api/work-types"],
+  });
+
+  const { data: selectedWorkTypeDetails } = useQuery<WorkType & { stages: WorkTypeStage[] }>({
+    queryKey: ["/api/work-types", selectedWorkType?.id],
+    enabled: !!selectedWorkType?.id,
+  });
+
+  const createWorkTypeMutation = useMutation({
+    mutationFn: async (data: InsertWorkType) => {
+      const res = await fetch("/api/work-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to create work type");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-types"] });
+      setIsAddingWorkType(false);
+      setNewWorkTypeForm({ name: "", description: "", color: "blue", isActive: true });
+    },
+  });
+
+  const deleteWorkTypeMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/work-types/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete work type");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-types"] });
+      if (selectedWorkType) setSelectedWorkType(null);
+    },
+  });
+
+  const createStageMutation = useMutation({
+    mutationFn: async (data: InsertWorkTypeStage) => {
+      const res = await fetch(`/api/work-types/${selectedWorkType?.id}/stages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to create stage");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-types", selectedWorkType?.id] });
+      setIsAddingStage(false);
+      setNewStageForm({
+        name: "",
+        category: "production",
+        triggersScheduler: false,
+        triggersPurchaseOrder: false,
+        subStages: [],
+      });
+    },
+  });
+
+  const updateStageMutation = useMutation({
+    mutationFn: async ({ stageId, data }: { stageId: number; data: Partial<WorkTypeStage> }) => {
+      const res = await fetch(`/api/work-types/${selectedWorkType?.id}/stages/${stageId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to update stage");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-types", selectedWorkType?.id] });
+      setEditingStageId(null);
+      setEditStageForm({});
+    },
+  });
+
+  const deleteStageMutation = useMutation({
+    mutationFn: async (stageId: number) => {
+      const res = await fetch(`/api/work-types/${selectedWorkType?.id}/stages/${stageId}`, { 
+        method: "DELETE" 
+      });
+      if (!res.ok) throw new Error("Failed to delete stage");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-types", selectedWorkType?.id] });
+    },
+  });
+
+  const reorderStagesMutation = useMutation({
+    mutationFn: async (stageIds: number[]) => {
+      const res = await fetch(`/api/work-types/${selectedWorkType?.id}/stages/reorder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stageIds }),
+      });
+      if (!res.ok) throw new Error("Failed to reorder stages");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-types", selectedWorkType?.id] });
+    },
+  });
+
+  const handleCreateWorkType = () => {
+    if (newWorkTypeForm.name) {
+      createWorkTypeMutation.mutate(newWorkTypeForm as InsertWorkType);
+    }
+  };
+
+  const handleCreateStage = () => {
+    if (newStageForm.name && selectedWorkType) {
+      const stagesCount = selectedWorkTypeDetails?.stages?.length || 0;
+      const key = newStageForm.name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+      createStageMutation.mutate({
+        ...newStageForm,
+        key,
+        workTypeId: selectedWorkType.id,
+        orderIndex: stagesCount + 1,
+      } as InsertWorkTypeStage);
+    }
+  };
+
+  const handleEditStage = (stage: WorkTypeStage) => {
+    setEditingStageId(stage.id);
+    setEditStageForm({ ...stage });
+  };
+
+  const handleSaveStageEdit = () => {
+    if (editingStageId && editStageForm.name) {
+      updateStageMutation.mutate({ stageId: editingStageId, data: editStageForm });
+    }
+  };
+
+  const moveStage = (index: number, direction: "up" | "down") => {
+    const stages = selectedWorkTypeDetails?.stages || [];
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= stages.length) return;
+    
+    const newStageIds = [...stages].map(s => s.id);
+    [newStageIds[index], newStageIds[targetIndex]] = [newStageIds[targetIndex], newStageIds[index]];
+    reorderStagesMutation.mutate(newStageIds);
+  };
+
+  if (isLoading) {
+    return <div className="text-center py-8 text-muted-foreground">Loading work types...</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-4">
+        <Card className="w-1/3">
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-sm font-medium">Work Types</CardTitle>
+            <CardDescription className="text-xs">Define different job workflows</CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 pt-2 space-y-2">
+            {workTypes.map((wt) => (
+              <div
+                key={wt.id}
+                className={cn(
+                  "flex items-center justify-between p-2 rounded cursor-pointer border",
+                  selectedWorkType?.id === wt.id ? "border-primary bg-muted" : "border-transparent hover:bg-muted/50"
+                )}
+                onClick={() => setSelectedWorkType(wt)}
+                data-testid={`work-type-${wt.id}`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className={cn("w-3 h-3 rounded-full", `bg-${wt.color}-500`)} />
+                  <span className="text-sm font-medium">{wt.name}</span>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 text-destructive hover:text-destructive"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteWorkTypeMutation.mutate(wt.id);
+                  }}
+                  data-testid={`delete-work-type-${wt.id}`}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+
+            {isAddingWorkType ? (
+              <div className="space-y-2 p-2 border rounded">
+                <Input
+                  value={newWorkTypeForm.name || ""}
+                  onChange={(e) => setNewWorkTypeForm({ ...newWorkTypeForm, name: e.target.value })}
+                  placeholder="Work type name"
+                  className="h-8"
+                  data-testid="new-work-type-name"
+                />
+                <Textarea
+                  value={newWorkTypeForm.description || ""}
+                  onChange={(e) => setNewWorkTypeForm({ ...newWorkTypeForm, description: e.target.value })}
+                  placeholder="Description (optional)"
+                  className="h-16 resize-none"
+                />
+                <Select
+                  value={newWorkTypeForm.color}
+                  onValueChange={(v) => setNewWorkTypeForm({ ...newWorkTypeForm, color: v })}
+                >
+                  <SelectTrigger className="h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STAGE_COLOR_OPTIONS.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        <div className="flex items-center gap-2">
+                          <div className={cn("w-3 h-3 rounded-full", `bg-${c.value}-500`)} />
+                          {c.label}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={handleCreateWorkType} disabled={createWorkTypeMutation.isPending}>
+                    <Save className="h-3 w-3 mr-1" />
+                    Save
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setIsAddingWorkType(false)}>
+                    <X className="h-3 w-3 mr-1" />
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setIsAddingWorkType(true)}
+                data-testid="add-work-type-btn"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Work Type
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="flex-1">
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-sm font-medium">
+              {selectedWorkType ? `Stages for "${selectedWorkType.name}"` : "Select a Work Type"}
+            </CardTitle>
+            <CardDescription className="text-xs">
+              {selectedWorkType ? "Configure stages and their order" : "Click a work type to configure its stages"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 pt-2 space-y-2">
+            {selectedWorkType && selectedWorkTypeDetails?.stages ? (
+              <>
+                {selectedWorkTypeDetails.stages.map((stage, index) => (
+                  <div
+                    key={stage.id}
+                    className={cn(
+                      "flex items-center gap-2 p-2 border rounded",
+                      editingStageId === stage.id && "border-primary"
+                    )}
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5"
+                        onClick={() => moveStage(index, "up")}
+                        disabled={index === 0}
+                      >
+                        <ChevronUp className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5"
+                        onClick={() => moveStage(index, "down")}
+                        disabled={index === selectedWorkTypeDetails.stages.length - 1}
+                      >
+                        <ChevronDown className="h-3 w-3" />
+                      </Button>
+                    </div>
+
+                    {editingStageId === stage.id ? (
+                      <div className="flex-1 space-y-2">
+                        <div className="flex gap-2">
+                          <Input
+                            value={editStageForm.name || ""}
+                            onChange={(e) => setEditStageForm({ ...editStageForm, name: e.target.value })}
+                            className="h-8 flex-1"
+                          />
+                          <Select
+                            value={editStageForm.category}
+                            onValueChange={(v) => setEditStageForm({ ...editStageForm, category: v })}
+                          >
+                            <SelectTrigger className="w-32 h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {STAGE_CATEGORY_OPTIONS.map((c) => (
+                                <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={editStageForm.triggersScheduler}
+                              onCheckedChange={(v) => setEditStageForm({ ...editStageForm, triggersScheduler: v })}
+                            />
+                            <Label className="text-xs">Show in Scheduler</Label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={editStageForm.triggersPurchaseOrder}
+                              onCheckedChange={(v) => setEditStageForm({ ...editStageForm, triggersPurchaseOrder: v })}
+                            />
+                            <Label className="text-xs">Triggers PO</Label>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={handleSaveStageEdit}>
+                            <Save className="h-3 w-3 mr-1" />
+                            Save
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingStageId(null)}>
+                            <X className="h-3 w-3 mr-1" />
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className={cn("w-3 h-3 rounded-full shrink-0", 
+                          stage.category === 'purchase_order' ? 'bg-purple-500' :
+                          stage.category === 'production' ? 'bg-amber-500' :
+                          stage.category === 'install' ? 'bg-green-500' :
+                          stage.category === 'external' ? 'bg-cyan-500' : 'bg-slate-500'
+                        )} />
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">{stage.name}</div>
+                          <div className="flex gap-1 mt-0.5">
+                            <Badge variant="outline" className="text-[10px]">{stage.category}</Badge>
+                            {stage.triggersScheduler && <Badge variant="secondary" className="text-[10px]">Scheduler</Badge>}
+                            {stage.triggersPurchaseOrder && <Badge variant="secondary" className="text-[10px]">PO</Badge>}
+                          </div>
+                        </div>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => handleEditStage(stage)}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => deleteStageMutation.mutate(stage.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                ))}
+
+                {isAddingStage ? (
+                  <div className="space-y-2 p-2 border border-primary rounded">
+                    <div className="flex gap-2">
+                      <Input
+                        value={newStageForm.name || ""}
+                        onChange={(e) => setNewStageForm({ ...newStageForm, name: e.target.value })}
+                        placeholder="Stage name"
+                        className="h-8 flex-1"
+                        data-testid="new-stage-name"
+                      />
+                      <Select
+                        value={newStageForm.category}
+                        onValueChange={(v) => setNewStageForm({ ...newStageForm, category: v })}
+                      >
+                        <SelectTrigger className="w-32 h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STAGE_CATEGORY_OPTIONS.map((c) => (
+                            <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={newStageForm.triggersScheduler}
+                          onCheckedChange={(v) => setNewStageForm({ ...newStageForm, triggersScheduler: v })}
+                        />
+                        <Label className="text-xs">Show in Scheduler</Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={newStageForm.triggersPurchaseOrder}
+                          onCheckedChange={(v) => setNewStageForm({ ...newStageForm, triggersPurchaseOrder: v })}
+                        />
+                        <Label className="text-xs">Triggers PO</Label>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={handleCreateStage} disabled={createStageMutation.isPending}>
+                        <Save className="h-3 w-3 mr-1" />
+                        Save
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setIsAddingStage(false)}>
+                        <X className="h-3 w-3 mr-1" />
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setIsAddingStage(true)}
+                    data-testid="add-stage-btn"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Stage
+                  </Button>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                Select a work type from the left to configure its stages
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }

@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { createServiceM8Client } from "./servicem8";
-import { insertJobSchema, insertStaffSchema, type InsertStaff } from "@shared/schema";
+import { insertJobSchema, insertStaffSchema, type InsertStaff, insertWorkTypeSchema, insertWorkTypeStageSchema } from "@shared/schema";
 import { z } from "zod";
 
 // ServiceM8 OAuth 2.0 Configuration
@@ -467,6 +467,198 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Error fetching job history:", error);
       res.status(500).json({ error: "Failed to fetch job history", message: error.message });
+    }
+  });
+
+  // ============== WORK TYPES API ==============
+  
+  // Get all work types
+  app.get("/api/work-types", async (req, res) => {
+    try {
+      const workTypes = await storage.getAllWorkTypes();
+      res.json(workTypes);
+    } catch (error) {
+      console.error("Error fetching work types:", error);
+      res.status(500).json({ error: "Failed to fetch work types" });
+    }
+  });
+
+  // Get a single work type with its stages
+  app.get("/api/work-types/:id", async (req, res) => {
+    try {
+      const workTypeId = parseInt(req.params.id);
+      const workType = await storage.getWorkType(workTypeId);
+      if (!workType) {
+        return res.status(404).json({ error: "Work type not found" });
+      }
+      const stages = await storage.getStagesForWorkType(workTypeId);
+      res.json({ ...workType, stages });
+    } catch (error) {
+      console.error("Error fetching work type:", error);
+      res.status(500).json({ error: "Failed to fetch work type" });
+    }
+  });
+
+  // Create a work type
+  app.post("/api/work-types", async (req, res) => {
+    try {
+      const validated = insertWorkTypeSchema.parse(req.body);
+      const workType = await storage.createWorkType(validated);
+      res.status(201).json(workType);
+    } catch (error) {
+      console.error("Error creating work type:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create work type" });
+    }
+  });
+
+  // Update a work type
+  app.patch("/api/work-types/:id", async (req, res) => {
+    try {
+      const workTypeId = parseInt(req.params.id);
+      const updated = await storage.updateWorkType(workTypeId, req.body);
+      if (!updated) {
+        return res.status(404).json({ error: "Work type not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating work type:", error);
+      res.status(500).json({ error: "Failed to update work type" });
+    }
+  });
+
+  // Delete a work type
+  app.delete("/api/work-types/:id", async (req, res) => {
+    try {
+      const workTypeId = parseInt(req.params.id);
+      await storage.deleteWorkType(workTypeId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting work type:", error);
+      res.status(500).json({ error: "Failed to delete work type" });
+    }
+  });
+
+  // ============== WORK TYPE STAGES API ==============
+
+  // Get stages for a work type
+  app.get("/api/work-types/:workTypeId/stages", async (req, res) => {
+    try {
+      const workTypeId = parseInt(req.params.workTypeId);
+      const stages = await storage.getStagesForWorkType(workTypeId);
+      res.json(stages);
+    } catch (error) {
+      console.error("Error fetching stages:", error);
+      res.status(500).json({ error: "Failed to fetch stages" });
+    }
+  });
+
+  // Create a stage for a work type
+  app.post("/api/work-types/:workTypeId/stages", async (req, res) => {
+    try {
+      const workTypeId = parseInt(req.params.workTypeId);
+      const validated = insertWorkTypeStageSchema.parse({ ...req.body, workTypeId });
+      const stage = await storage.createWorkTypeStage(validated);
+      res.status(201).json(stage);
+    } catch (error) {
+      console.error("Error creating stage:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create stage" });
+    }
+  });
+
+  // Update a stage
+  app.patch("/api/work-types/:workTypeId/stages/:stageId", async (req, res) => {
+    try {
+      const stageId = parseInt(req.params.stageId);
+      const updated = await storage.updateWorkTypeStage(stageId, req.body);
+      if (!updated) {
+        return res.status(404).json({ error: "Stage not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating stage:", error);
+      res.status(500).json({ error: "Failed to update stage" });
+    }
+  });
+
+  // Delete a stage
+  app.delete("/api/work-types/:workTypeId/stages/:stageId", async (req, res) => {
+    try {
+      const stageId = parseInt(req.params.stageId);
+      await storage.deleteWorkTypeStage(stageId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting stage:", error);
+      res.status(500).json({ error: "Failed to delete stage" });
+    }
+  });
+
+  // Reorder stages
+  app.post("/api/work-types/:workTypeId/stages/reorder", async (req, res) => {
+    try {
+      const workTypeId = parseInt(req.params.workTypeId);
+      const { stageIds } = req.body;
+      if (!Array.isArray(stageIds)) {
+        return res.status(400).json({ error: "stageIds must be an array" });
+      }
+      await storage.reorderStages(workTypeId, stageIds);
+      const stages = await storage.getStagesForWorkType(workTypeId);
+      res.json(stages);
+    } catch (error) {
+      console.error("Error reordering stages:", error);
+      res.status(500).json({ error: "Failed to reorder stages" });
+    }
+  });
+
+  // ============== JOB STAGE PROGRESS API ==============
+
+  // Get stage progress for a job
+  app.get("/api/jobs/:jobId/stage-progress", async (req, res) => {
+    try {
+      const jobId = parseInt(req.params.jobId);
+      const progress = await storage.getJobStageProgress(jobId);
+      res.json(progress);
+    } catch (error) {
+      console.error("Error fetching job stage progress:", error);
+      res.status(500).json({ error: "Failed to fetch job stage progress" });
+    }
+  });
+
+  // Update stage progress for a job
+  app.patch("/api/jobs/:jobId/stage-progress/:stageId", async (req, res) => {
+    try {
+      const jobId = parseInt(req.params.jobId);
+      const stageId = parseInt(req.params.stageId);
+      const updated = await storage.updateJobStageProgress(jobId, stageId, req.body);
+      if (!updated) {
+        return res.status(404).json({ error: "Stage progress not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating job stage progress:", error);
+      res.status(500).json({ error: "Failed to update job stage progress" });
+    }
+  });
+
+  // Initialize stages for a job when work type is assigned
+  app.post("/api/jobs/:jobId/initialize-stages", async (req, res) => {
+    try {
+      const jobId = parseInt(req.params.jobId);
+      const { workTypeId } = req.body;
+      if (!workTypeId) {
+        return res.status(400).json({ error: "workTypeId is required" });
+      }
+      await storage.initializeJobStages(jobId, workTypeId);
+      const progress = await storage.getJobStageProgress(jobId);
+      res.json(progress);
+    } catch (error) {
+      console.error("Error initializing job stages:", error);
+      res.status(500).json({ error: "Failed to initialize job stages" });
     }
   });
 
