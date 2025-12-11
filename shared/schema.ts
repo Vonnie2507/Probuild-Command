@@ -111,3 +111,23 @@ export const insertSyncLogSchema = createInsertSchema(syncLog, {
 
 export type InsertSyncLog = typeof syncLog.$inferInsert;
 export type SyncLog = typeof syncLog.$inferSelect;
+
+// OAuth Tokens Table (for ServiceM8 OAuth 2.0)
+export const oauthTokens = pgTable("oauth_tokens", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  provider: text("provider").notNull().default("servicem8"),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token"),
+  expiresAt: timestamp("expires_at"),
+  scope: text("scope"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertOAuthTokenSchema = createInsertSchema(oauthTokens, {
+  provider: z.string(),
+  accessToken: z.string(),
+});
+
+export type InsertOAuthToken = typeof oauthTokens.$inferInsert;
+export type OAuthToken = typeof oauthTokens.$inferSelect;

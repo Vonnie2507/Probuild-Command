@@ -5,6 +5,15 @@ import { createServiceM8Client } from "./servicem8";
 import { insertJobSchema, insertStaffSchema, type InsertStaff } from "@shared/schema";
 import { z } from "zod";
 
+// ServiceM8 OAuth 2.0 Configuration
+const SM8_OAUTH_CONFIG = {
+  authorizeUrl: "https://go.servicem8.com/oauth/authorize",
+  tokenUrl: "https://go.servicem8.com/oauth/access_token",
+  clientId: process.env.SERVICEM8_CLIENT_ID || "",
+  clientSecret: process.env.SERVICEM8_CLIENT_SECRET || "",
+  scopes: "read_jobs read_schedule manage_schedule read_messages",
+};
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -162,6 +171,140 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching sync status:", error);
       res.status(500).json({ error: "Failed to fetch sync status" });
+    }
+  });
+
+  // ============ ServiceM8 OAuth 2.0 Routes ============
+
+  // Get OAuth status (check if we have a valid token)
+  app.get("/api/auth/servicem8/status", async (req, res) => {
+    try {
+      const token = await storage.getOAuthToken("servicem8");
+      if (!token) {
+        return res.json({ connected: false, message: "Not connected to ServiceM8 OAuth" });
+      }
+      
+      const isExpired = token.expiresAt && new Date(token.expiresAt) < new Date();
+      res.json({ 
+        connected: !isExpired,
+        expiresAt: token.expiresAt,
+        scope: token.scope,
+        message: isExpired ? "Token expired, please reconnect" : "Connected to ServiceM8"
+      });
+    } catch (error) {
+      console.error("Error checking OAuth status:", error);
+      res.status(500).json({ error: "Failed to check OAuth status" });
+    }
+  });
+
+  // Start OAuth flow - redirect to ServiceM8 authorization
+  app.get("/api/auth/servicem8/login", (req, res) => {
+    if (!SM8_OAUTH_CONFIG.clientId) {
+      return res.status(400).json({ error: "ServiceM8 OAuth not configured. Missing SERVICEM8_CLIENT_ID." });
+    }
+
+    const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/servicem8/callback`;
+    const authUrl = new URL(SM8_OAUTH_CONFIG.authorizeUrl);
+    authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("client_id", SM8_OAUTH_CONFIG.clientId);
+    authUrl.searchParams.set("redirect_uri", redirectUri);
+    authUrl.searchParams.set("scope", SM8_OAUTH_CONFIG.scopes);
+
+    console.log("Redirecting to ServiceM8 OAuth:", authUrl.toString());
+    res.redirect(authUrl.toString());
+  });
+
+  // OAuth callback - exchange code for tokens
+  app.get("/api/auth/servicem8/callback", async (req, res) => {
+    const { code, error: oauthError } = req.query;
+
+    if (oauthError) {
+      console.error("OAuth error:", oauthError);
+      return res.redirect("/?oauth_error=" + encodeURIComponent(String(oauthError)));
+    }
+
+    if (!code) {
+      return res.redirect("/?oauth_error=no_code");
+    }
+
+    try {
+      const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/servicem8/callback`;
+      
+      const tokenResponse = await fetch(SM8_OAUTH_CONFIG.tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code: String(code),
+          client_id: SM8_OAUTH_CONFIG.clientId,
+          client_secret: SM8_OAUTH_CONFIG.clientSecret,
+          redirect_uri: redirectUri,
+        }),
+      });
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        console.error("Token exchange failed:", tokenResponse.status, errorText);
+        return res.redirect("/?oauth_error=token_exchange_failed");
+      }
+
+      const tokenData = await tokenResponse.json();
+      console.log("OAuth token received successfully");
+
+      // Calculate expiry time
+      const expiresAt = tokenData.expires_in 
+        ? new Date(Date.now() + tokenData.expires_in * 1000)
+        : null;
+
+      // Save tokens to database
+      await storage.saveOAuthToken({
+        provider: "servicem8",
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token || null,
+        expiresAt: expiresAt,
+        scope: SM8_OAUTH_CONFIG.scopes,
+      });
+
+      res.redirect("/?oauth_success=true");
+    } catch (error) {
+      console.error("OAuth callback error:", error);
+      res.redirect("/?oauth_error=callback_failed");
+    }
+  });
+
+  // Fetch Job Activity/Diary using OAuth token
+  app.get("/api/servicem8/job-activity/:jobUuid", async (req, res) => {
+    try {
+      const token = await storage.getOAuthToken("servicem8");
+      if (!token) {
+        return res.status(401).json({ error: "Not connected to ServiceM8 OAuth. Please connect first." });
+      }
+
+      const { jobUuid } = req.params;
+      const response = await fetch(
+        `https://api.servicem8.com/api_1.0/jobactivity.json?%24filter=job_uuid%20eq%20'${jobUuid}'`,
+        {
+          headers: {
+            "Authorization": `Bearer ${token.accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          return res.status(401).json({ error: "OAuth token expired. Please reconnect." });
+        }
+        throw new Error(`API Error: ${response.status}`);
+      }
+
+      const activities = await response.json();
+      res.json(activities);
+    } catch (error: any) {
+      console.error("Error fetching job activity:", error);
+      res.status(500).json({ error: "Failed to fetch job activity", message: error.message });
     }
   });
 

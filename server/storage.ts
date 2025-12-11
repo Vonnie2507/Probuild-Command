@@ -1,4 +1,4 @@
-import { type SelectJob, type InsertJob, jobs, type Staff, type InsertStaff, staff, type SyncLog, type InsertSyncLog, syncLog } from "@shared/schema";
+import { type SelectJob, type InsertJob, jobs, type Staff, type InsertStaff, staff, type SyncLog, type InsertSyncLog, syncLog, type OAuthToken, type InsertOAuthToken, oauthTokens } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
 
@@ -21,6 +21,11 @@ export interface IStorage {
   createSyncLog(log: InsertSyncLog): Promise<SyncLog>;
   updateSyncLog(id: number, log: Partial<InsertSyncLog>): Promise<SyncLog | undefined>;
   getLatestSyncLog(): Promise<SyncLog | undefined>;
+  
+  // OAuth Tokens
+  getOAuthToken(provider: string): Promise<OAuthToken | undefined>;
+  saveOAuthToken(token: InsertOAuthToken): Promise<OAuthToken>;
+  updateOAuthToken(id: number, token: Partial<InsertOAuthToken>): Promise<OAuthToken | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -107,6 +112,32 @@ export class DatabaseStorage implements IStorage {
   async getLatestSyncLog(): Promise<SyncLog | undefined> {
     const [log] = await db.select().from(syncLog).orderBy(desc(syncLog.startedAt)).limit(1);
     return log || undefined;
+  }
+
+  // OAuth Tokens
+  async getOAuthToken(provider: string): Promise<OAuthToken | undefined> {
+    const [token] = await db.select().from(oauthTokens).where(eq(oauthTokens.provider, provider)).orderBy(desc(oauthTokens.updatedAt)).limit(1);
+    return token || undefined;
+  }
+
+  async saveOAuthToken(insertToken: InsertOAuthToken): Promise<OAuthToken> {
+    const existing = await this.getOAuthToken(insertToken.provider || 'servicem8');
+    if (existing) {
+      const updated = await this.updateOAuthToken(existing.id, insertToken);
+      return updated!;
+    }
+    const [token] = await db.insert(oauthTokens).values(insertToken).returning();
+    return token;
+  }
+
+  async updateOAuthToken(id: number, updateData: Partial<InsertOAuthToken>): Promise<OAuthToken | undefined> {
+    const data: any = { ...updateData, updatedAt: new Date() };
+    const [token] = await db
+      .update(oauthTokens)
+      .set(data)
+      .where(eq(oauthTokens.id, id))
+      .returning();
+    return token || undefined;
   }
 }
 
