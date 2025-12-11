@@ -59,13 +59,9 @@ const STORAGE_KEY = "probuild_settings";
 const DEFAULT_STAFF: StaffMember[] = [
   { id: "all", name: "All Staff", role: "sales", dailyCapacityHours: 0, skills: [], color: "bg-gray-500", active: true },
   { id: "wayne", name: "Wayne", role: "sales", dailyCapacityHours: 8, skills: [], color: "bg-blue-500", active: true },
-  { id: "dave", name: "Dave", role: "sales", dailyCapacityHours: 8, skills: [], color: "bg-blue-500", active: true },
-  { id: "craig", name: "Craig", role: "production", dailyCapacityHours: 8, skills: ["production"], color: "bg-amber-500", active: true },
-  { id: "sarah", name: "Sarah", role: "production", dailyCapacityHours: 8, skills: ["production"], color: "bg-amber-500", active: true },
-  { id: "mike", name: "Mike (Team A)", role: "install", dailyCapacityHours: 8, skills: ["posts", "panels"], color: "bg-emerald-500", active: true },
-  { id: "tom", name: "Tom (Team A)", role: "install", dailyCapacityHours: 8, skills: ["posts", "panels"], color: "bg-emerald-500", active: true },
-  { id: "josh", name: "Josh (Team B)", role: "install", dailyCapacityHours: 8, skills: ["posts", "panels"], color: "bg-indigo-500", active: true },
-  { id: "sam", name: "Sam (Team B)", role: "install", dailyCapacityHours: 8, skills: ["posts", "panels"], color: "bg-indigo-500", active: true },
+  { id: "bradley", name: "Bradley", role: "sales", dailyCapacityHours: 8, skills: [], color: "bg-blue-500", active: true },
+  { id: "dave_turner", name: "Dave Turner", role: "sales", dailyCapacityHours: 8, skills: [], color: "bg-blue-500", active: true },
+  { id: "david_rees", name: "David Rees", role: "sales", dailyCapacityHours: 8, skills: [], color: "bg-blue-500", active: true },
 ];
 
 const DEFAULT_PIPELINES: PipelineConfig = {

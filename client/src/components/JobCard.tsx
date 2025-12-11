@@ -9,12 +9,23 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Job } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
-import { CalendarClock, Mail, MessageSquare, Phone, User, AlertCircle, CheckCircle2, Clock, FileText, MapPin, DollarSign, Calendar, Briefcase, ExternalLink, Loader2, Send } from "lucide-react";
+import { CalendarClock, Mail, MessageSquare, Phone, User, AlertCircle, CheckCircle2, Clock, FileText, MapPin, DollarSign, Calendar, Briefcase, ExternalLink, Loader2, Send, Wrench } from "lucide-react";
 import { Draggable } from "@hello-pangea/dnd";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+interface WorkType {
+  id: number;
+  name: string;
+  description?: string;
+  color: string;
+  isDefault: boolean;
+  isActive: boolean;
+}
 
 interface ServiceM8Note {
   uuid: string;
@@ -83,6 +94,53 @@ export function JobCard({ job, index }: JobCardProps) {
   const [sendingSms, setSendingSms] = useState(false);
   const [loadingContact, setLoadingContact] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  // Fetch work types for the dropdown
+  const { data: workTypes = [] } = useQuery<WorkType[]>({
+    queryKey: ["workTypes"],
+    queryFn: async () => {
+      const res = await fetch("/api/work-types");
+      if (!res.ok) throw new Error("Failed to fetch work types");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+  
+  // Mutation to update job work type
+  const updateJobMutation = useMutation({
+    mutationFn: async (workTypeId: number) => {
+      const res = await fetch(`/api/jobs/${job.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workTypeId }),
+      });
+      if (!res.ok) throw new Error("Failed to update job");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      toast({
+        title: "Job type updated",
+        description: "The job type has been changed successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to update job type",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const handleWorkTypeChange = (workTypeId: string) => {
+    if (workTypeId && workTypeId !== "none") {
+      updateJobMutation.mutate(parseInt(workTypeId));
+    }
+  };
+  
+  const currentWorkType = workTypes.find(wt => wt.id === job.workTypeId);
   
   useEffect(() => {
     if (detailsOpen && job.serviceM8Uuid) {
@@ -383,7 +441,7 @@ export function JobCard({ job, index }: JobCardProps) {
                 ) : null}
               </div>
               
-              <div className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground">
+              <div className="mt-2 flex items-center justify-between gap-1 text-[10px] text-muted-foreground">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div className="flex items-center gap-1 cursor-help">
@@ -395,6 +453,30 @@ export function JobCard({ job, index }: JobCardProps) {
                     <p>Assigned staff member</p>
                   </TooltipContent>
                 </Tooltip>
+                
+                {/* Job Type Dropdown - Only show for Quote phase jobs */}
+                {job.lifecyclePhase === 'quote' && workTypes.length > 0 && (
+                  <Select
+                    value={job.workTypeId?.toString() || "none"}
+                    onValueChange={handleWorkTypeChange}
+                  >
+                    <SelectTrigger 
+                      className="h-6 w-[120px] text-[10px] border-dashed"
+                      onClick={(e) => e.stopPropagation()}
+                      data-testid={`select-job-type-${job.id}`}
+                    >
+                      <Wrench className="h-3 w-3 mr-1" />
+                      <SelectValue placeholder="Job Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {workTypes.filter(wt => wt.isActive).map(wt => (
+                        <SelectItem key={wt.id} value={wt.id.toString()}>
+                          {wt.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </CardContent>
 
@@ -616,6 +698,47 @@ export function JobCard({ job, index }: JobCardProps) {
             </div>
           </div>
           
+          {/* Job Type Selection */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Wrench className="h-4 w-4" />
+                <span>Job Type</span>
+              </div>
+              {workTypes.length > 0 ? (
+                <Select
+                  value={job.workTypeId?.toString() || "none"}
+                  onValueChange={handleWorkTypeChange}
+                >
+                  <SelectTrigger className="h-9 text-sm" data-testid={`select-job-type-dialog-${job.id}`}>
+                    <SelectValue placeholder="Select job type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workTypes.filter(wt => wt.isActive).map(wt => (
+                      <SelectItem key={wt.id} value={wt.id.toString()}>
+                        {wt.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {currentWorkType?.name || "Not set"}
+                </p>
+              )}
+            </div>
+            
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <AlertCircle className="h-4 w-4" />
+                <span>Priority</span>
+              </div>
+              <Badge variant={job.urgency === 'critical' ? 'destructive' : job.urgency === 'high' ? 'default' : 'secondary'}>
+                {job.urgency}
+              </Badge>
+            </div>
+          </div>
+          
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -631,12 +754,16 @@ export function JobCard({ job, index }: JobCardProps) {
             
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <AlertCircle className="h-4 w-4" />
-                <span>Priority</span>
+                <CalendarClock className="h-4 w-4" />
+                <span>Quote Age</span>
               </div>
-              <Badge variant={job.urgency === 'critical' ? 'destructive' : job.urgency === 'high' ? 'default' : 'secondary'}>
-                {job.urgency}
-              </Badge>
+              <p className="text-sm">
+                {job.hoursSinceQuoteSent != null 
+                  ? `${job.hoursSinceQuoteSent} hours since quote sent`
+                  : job.daysSinceQuoteSent != null
+                    ? `${job.daysSinceQuoteSent} days since quote sent`
+                    : "Quote not sent yet"}
+              </p>
             </div>
           </div>
           

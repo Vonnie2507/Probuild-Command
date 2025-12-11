@@ -97,17 +97,9 @@ export type StaffMember = {
 export const STAFF_MEMBERS: StaffMember[] = [
   { id: "all", name: "All Staff", role: "sales", dailyCapacityHours: 0, skills: [], color: "bg-gray-500" },
   { id: "wayne", name: "Wayne", role: "sales", dailyCapacityHours: 8, skills: [], color: "bg-blue-500" },
-  { id: "dave", name: "Dave", role: "sales", dailyCapacityHours: 8, skills: [], color: "bg-blue-500" },
-  { id: "craig", name: "Craig", role: "production", dailyCapacityHours: 8, skills: ["production"], color: "bg-amber-500" },
-  { id: "sarah", name: "Sarah", role: "production", dailyCapacityHours: 8, skills: ["production"], color: "bg-amber-500" },
-  
-  // Install Team A
-  { id: "mike", name: "Mike (Team A)", role: "install", dailyCapacityHours: 8, skills: ["posts", "panels"], color: "bg-emerald-500" },
-  { id: "tom", name: "Tom (Team A)", role: "install", dailyCapacityHours: 8, skills: ["posts", "panels"], color: "bg-emerald-500" },
-  
-  // Install Team B
-  { id: "josh", name: "Josh (Team B)", role: "install", dailyCapacityHours: 8, skills: ["posts", "panels"], color: "bg-indigo-500" },
-  { id: "sam", name: "Sam (Team B)", role: "install", dailyCapacityHours: 8, skills: ["posts", "panels"], color: "bg-indigo-500" },
+  { id: "bradley", name: "Bradley", role: "sales", dailyCapacityHours: 8, skills: [], color: "bg-blue-500" },
+  { id: "dave_turner", name: "Dave Turner", role: "sales", dailyCapacityHours: 8, skills: [], color: "bg-blue-500" },
+  { id: "david_rees", name: "David Rees", role: "sales", dailyCapacityHours: 8, skills: [], color: "bg-blue-500" },
 ];
 
 export const getDailyInstallCapacity = () => {
