@@ -12,12 +12,20 @@ interface JobCardProps {
 }
 
 export function JobCard({ job, index }: JobCardProps) {
+  // Quote phase jobs are always orange, Work Order phase jobs are blue
+  const getLifecycleColor = () => {
+    if (job.lifecyclePhase === 'quote') {
+      return "border-l-orange-500 bg-orange-50/50";
+    }
+    return "border-l-blue-500 bg-blue-50/30";
+  };
+
   const getUrgencyColor = (urgency: Job["urgency"]) => {
+    // Urgency colors are secondary - lifecycle phase takes priority
     switch (urgency) {
-      case "critical": return "border-l-red-500 bg-red-50/30";
-      case "high": return "border-l-orange-500 bg-orange-50/30";
-      case "medium": return "border-l-yellow-500";
-      default: return "border-l-emerald-500";
+      case "critical": return "ring-2 ring-red-300";
+      case "high": return "ring-1 ring-orange-200";
+      default: return "";
     }
   };
 
@@ -42,6 +50,7 @@ export function JobCard({ job, index }: JobCardProps) {
           <Card 
             className={cn(
               "group relative overflow-hidden transition-all hover:shadow-md border-l-4", 
+              getLifecycleColor(),
               getUrgencyColor(job.urgency),
               snapshot.isDragging && "rotate-2 shadow-xl ring-2 ring-primary/20 opacity-90 z-50"
             )}

@@ -211,6 +211,12 @@ export default function CommandCenter() {
     return staffMatch && searchMatch;
   });
 
+  // Quote phase jobs for Sales section (orange cards)
+  const quoteJobs = filteredJobs.filter(job => job.lifecyclePhase === 'quote');
+  
+  // Work order phase jobs for Scheduler/Production (blue cards)
+  const workOrderJobs = filteredJobs.filter(job => job.lifecyclePhase === 'work_order');
+
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden">
       {/* Header */}
@@ -351,7 +357,7 @@ export default function CommandCenter() {
             <TabsContent value="leads" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
                <PipelineBoard 
                   columns={pipelines.leads} 
-                  jobs={filteredJobs} 
+                  jobs={quoteJobs} 
                   onJobMove={handleJobMove} 
                />
             </TabsContent>
@@ -359,7 +365,7 @@ export default function CommandCenter() {
             <TabsContent value="quotes" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
               <PipelineBoard 
                   columns={pipelines.quotes} 
-                  jobs={filteredJobs} 
+                  jobs={quoteJobs} 
                   onJobMove={handleJobMove} 
                />
             </TabsContent>
@@ -372,7 +378,7 @@ export default function CommandCenter() {
 
         {viewMode === "scheduler" && (
           <SchedulerDashboard 
-            jobs={filteredJobs} 
+            jobs={workOrderJobs} 
             onJobMove={handleJobMove}
             onScheduleJob={handleScheduleJob}
             onUnscheduleJob={handleUnscheduleJob}
