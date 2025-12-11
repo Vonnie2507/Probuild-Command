@@ -125,7 +125,14 @@ export async function registerRoutes(
         const sm8Jobs = await sm8Client.fetchJobs();
         
         for (const sm8Job of sm8Jobs) {
-          const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job);
+          // Fetch job contact to get customer name
+          let customerName = "Unknown Customer";
+          const contact = await sm8Client.fetchJobContact(sm8Job.uuid);
+          if (contact && (contact.first || contact.last)) {
+            customerName = `${contact.first} ${contact.last}`.trim();
+          }
+          
+          const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName);
           await storage.upsertJobByServiceM8Uuid(mappedJob);
           jobsProcessed++;
         }

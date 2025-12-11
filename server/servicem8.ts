@@ -62,6 +62,32 @@ export class ServiceM8Client {
     }
   }
 
+  async fetchJobContact(jobUuid: string): Promise<{ first: string; last: string; phone?: string; mobile?: string; email?: string } | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/jobcontact.json?%24filter=job_uuid%20eq%20'${jobUuid}'`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) return null;
+      const contacts = await response.json();
+      if (contacts && contacts.length > 0) {
+        const contact = contacts[0];
+        return {
+          first: contact.first || "",
+          last: contact.last || "",
+          phone: contact.phone,
+          mobile: contact.mobile,
+          email: contact.email
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   mapServiceM8JobToInsertJob(sm8Job: ServiceM8Job, companyName?: string): InsertJob {
     const address = sm8Job.job_address || sm8Job.billing_address || "No Address";
     const quoteValue = parseFloat(sm8Job.total_invoice_amount) || 0;
