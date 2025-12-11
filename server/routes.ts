@@ -11,7 +11,7 @@ const SM8_OAUTH_CONFIG = {
   tokenUrl: "https://go.servicem8.com/oauth/access_token",
   clientId: process.env.SERVICEM8_CLIENT_ID || "",
   clientSecret: process.env.SERVICEM8_CLIENT_SECRET || "",
-  scopes: "read_jobs read_schedule manage_schedule read_messages",
+  scopes: "read_jobs read_schedule manage_schedule read_messages read_job_notes read_staff read_clients",
 };
 
 export async function registerRoutes(
@@ -305,6 +305,117 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Error fetching job activity:", error);
       res.status(500).json({ error: "Failed to fetch job activity", message: error.message });
+    }
+  });
+
+  // Fetch Job Notes using OAuth token
+  app.get("/api/servicem8/job-notes/:jobUuid", async (req, res) => {
+    try {
+      const token = await storage.getOAuthToken("servicem8");
+      if (!token) {
+        return res.status(401).json({ error: "Not connected to ServiceM8 OAuth. Please connect first." });
+      }
+
+      const { jobUuid } = req.params;
+      const response = await fetch(
+        `https://api.servicem8.com/api_1.0/note.json?%24filter=related_object%20eq%20'job'%20and%20related_object_uuid%20eq%20'${jobUuid}'`,
+        {
+          headers: {
+            "Authorization": `Bearer ${token.accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Notes API error:", response.status, errorText);
+        throw new Error(`API Error: ${response.status}`);
+      }
+
+      const notes = await response.json();
+      res.json(notes);
+    } catch (error: any) {
+      console.error("Error fetching job notes:", error);
+      res.status(500).json({ error: "Failed to fetch job notes", message: error.message });
+    }
+  });
+
+  // Fetch all notes from ServiceM8 (for testing/debugging)
+  app.get("/api/servicem8/all-notes", async (req, res) => {
+    try {
+      const token = await storage.getOAuthToken("servicem8");
+      if (!token) {
+        return res.status(401).json({ error: "Not connected to ServiceM8 OAuth." });
+      }
+
+      const response = await fetch(
+        `https://api.servicem8.com/api_1.0/note.json?%24top=50`,
+        {
+          headers: {
+            "Authorization": `Bearer ${token.accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("All notes API error:", response.status, errorText);
+        return res.status(response.status).json({ error: errorText });
+      }
+
+      const notes = await response.json();
+      res.json({ count: notes.length, notes });
+    } catch (error: any) {
+      console.error("Error fetching all notes:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Fetch combined job communication history (activities + notes)
+  app.get("/api/servicem8/job-history/:jobUuid", async (req, res) => {
+    try {
+      const token = await storage.getOAuthToken("servicem8");
+      if (!token) {
+        return res.status(401).json({ error: "Not connected to ServiceM8 OAuth. Please connect first." });
+      }
+
+      const { jobUuid } = req.params;
+      
+      // Fetch both activities and notes in parallel
+      const [activitiesRes, notesRes] = await Promise.all([
+        fetch(
+          `https://api.servicem8.com/api_1.0/jobactivity.json?%24filter=job_uuid%20eq%20'${jobUuid}'`,
+          {
+            headers: {
+              "Authorization": `Bearer ${token.accessToken}`,
+              "Content-Type": "application/json",
+            },
+          }
+        ),
+        fetch(
+          `https://api.servicem8.com/api_1.0/note.json?%24filter=related_object%20eq%20'job'%20and%20related_object_uuid%20eq%20'${jobUuid}'`,
+          {
+            headers: {
+              "Authorization": `Bearer ${token.accessToken}`,
+              "Content-Type": "application/json",
+            },
+          }
+        )
+      ]);
+
+      const activities = activitiesRes.ok ? await activitiesRes.json() : [];
+      const notes = notesRes.ok ? await notesRes.json() : [];
+
+      res.json({
+        activities,
+        notes,
+        totalItems: activities.length + notes.length
+      });
+    } catch (error: any) {
+      console.error("Error fetching job history:", error);
+      res.status(500).json({ error: "Failed to fetch job history", message: error.message });
     }
   });
 
