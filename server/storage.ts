@@ -82,7 +82,34 @@ export class DatabaseStorage implements IStorage {
   async upsertJobByServiceM8Uuid(insertJob: InsertJob): Promise<SelectJob> {
     const existing = await this.getJobByServiceM8Uuid(insertJob.serviceM8Uuid);
     if (existing) {
-      const updated = await this.updateJob(existing.id, insertJob);
+      // Preserve local-only fields that shouldn't be overwritten by sync
+      const preservedFields = {
+        workTypeId: existing.workTypeId,
+        currentStageId: existing.currentStageId,
+        schedulerStage: existing.schedulerStage,
+        tentativePostDate: existing.tentativePostDate,
+        tentativePanelDate: existing.tentativePanelDate,
+        tentativeNotes: existing.tentativeNotes,
+        postInstallDate: existing.postInstallDate,
+        panelInstallDate: existing.panelInstallDate,
+        installStage: existing.installStage,
+        purchaseOrderStatus: existing.purchaseOrderStatus,
+        estimatedProductionDuration: existing.estimatedProductionDuration,
+        postInstallDuration: existing.postInstallDuration,
+        postInstallCrewSize: existing.postInstallCrewSize,
+        panelInstallDuration: existing.panelInstallDuration,
+        panelInstallCrewSize: existing.panelInstallCrewSize,
+      };
+      
+      // Merge: sync data + preserved local fields (local fields take priority where they exist)
+      const mergedJob = { ...insertJob };
+      for (const [key, value] of Object.entries(preservedFields)) {
+        if (value !== null && value !== undefined) {
+          (mergedJob as any)[key] = value;
+        }
+      }
+      
+      const updated = await this.updateJob(existing.id, mergedJob);
       return updated!;
     } else {
       return await this.createJob(insertJob);
