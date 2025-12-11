@@ -310,13 +310,19 @@ export async function registerRoutes(
     }
   });
 
+  // Helper to get proper protocol (handles reverse proxy)
+  const getBaseUrl = (req: any) => {
+    const proto = req.get('x-forwarded-proto') || req.protocol;
+    return `https://${req.get('host')}`;
+  };
+
   // Start OAuth flow - redirect to ServiceM8 authorization
   app.get("/api/auth/servicem8/login", (req, res) => {
     if (!SM8_OAUTH_CONFIG.clientId) {
       return res.status(400).json({ error: "ServiceM8 OAuth not configured. Missing SERVICEM8_CLIENT_ID." });
     }
 
-    const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/servicem8/callback`;
+    const redirectUri = `${getBaseUrl(req)}/api/auth/servicem8/callback`;
     const authUrl = new URL(SM8_OAUTH_CONFIG.authorizeUrl);
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("client_id", SM8_OAUTH_CONFIG.clientId);
@@ -341,7 +347,7 @@ export async function registerRoutes(
     }
 
     try {
-      const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/servicem8/callback`;
+      const redirectUri = `${getBaseUrl(req)}/api/auth/servicem8/callback`;
       
       const tokenResponse = await fetch(SM8_OAUTH_CONFIG.tokenUrl, {
         method: "POST",
