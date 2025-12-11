@@ -137,31 +137,62 @@ export class ServiceM8Client {
     return companyMap;
   }
 
-  // Fetch all job custom field values - custom fields are stored separately from jobs
+  // Fetch all job custom field values - custom fields in ServiceM8 are accessed via $expand
   // Returns a map of job_uuid -> { fieldName: value }
   async fetchAllJobCustomFields(): Promise<Map<string, Record<string, string>>> {
     const customFieldMap = new Map<string, Record<string, string>>();
     try {
-      // Fetch all job custom field values
-      const response = await fetch(`${this.baseUrl}/jobcustomfield.json?%24top=10000`, {
+      // In ServiceM8, custom field values are embedded in job records when using $expand=customfield_values
+      // Or they can be retrieved from the jobs themselves with the field names
+      // Let's fetch jobs with custom field expansion
+      const response = await fetch(`${this.baseUrl}/job.json?%24filter=active%20eq%201&%24top=1000&%24expand=customfield_values`, {
         headers: {
           "X-API-Key": this.apiKey,
           "Content-Type": "application/json",
         },
       });
+      
       if (!response.ok) {
-        console.error("Failed to fetch job custom fields:", response.status);
+        console.error("Failed to fetch jobs with custom fields:", response.status);
+        // Try alternative: jobs may already have custom fields in the response
         return customFieldMap;
       }
-      const customFields = await response.json();
-      console.log(`[CustomFields] Fetched ${customFields.length} custom field values`);
       
-      // Group by job_uuid
-      for (const cf of customFields) {
-        if (cf.job_uuid && cf.field_name && cf.field_data) {
-          const existing = customFieldMap.get(cf.job_uuid) || {};
-          existing[cf.field_name] = cf.field_data;
-          customFieldMap.set(cf.job_uuid, existing);
+      const jobs = await response.json();
+      console.log(`[CustomFields] Fetched ${jobs.length} jobs with custom field expansion`);
+      
+      // Log first job to see structure
+      if (jobs.length > 0) {
+        console.log(`[CustomFields] Sample job keys:`, Object.keys(jobs[0]));
+        console.log(`[CustomFields] Sample job data:`, JSON.stringify(jobs[0], null, 2).substring(0, 1000));
+      }
+      
+      // Extract custom field values from each job
+      for (const job of jobs) {
+        if (job.uuid) {
+          const fieldValues: Record<string, string> = {};
+          
+          // Check for customfield_values array (ServiceM8's $expand format)
+          if (job.customfield_values && Array.isArray(job.customfield_values)) {
+            for (const cf of job.customfield_values) {
+              if (cf.field_name && cf.value) {
+                fieldValues[cf.field_name] = cf.value;
+              }
+            }
+          }
+          
+          // Also check for direct custom field properties on the job
+          // ServiceM8 sometimes returns custom fields directly with their field names
+          for (const key of Object.keys(job)) {
+            if (key.includes('Staff') || key.includes('staff') || key.includes('Assigned')) {
+              fieldValues[key] = job[key];
+              console.log(`[CustomFields] Found field "${key}" = "${job[key]}" on job ${job.generated_job_id}`);
+            }
+          }
+          
+          if (Object.keys(fieldValues).length > 0) {
+            customFieldMap.set(job.uuid, fieldValues);
+          }
         }
       }
       
@@ -177,8 +208,10 @@ export class ServiceM8Client {
     const jobFields = customFieldMap.get(jobUuid);
     if (!jobFields) return "Unassigned";
     
-    // Try various possible field names
-    const staffValue = jobFields['Staff Assigned'] || jobFields['staff_assigned'] || jobFields['Staff_Assigned'];
+    // ServiceM8 returns custom fields with prefix "customfield_" followed by field name in snake_case
+    const staffValue = jobFields['customfield_staff_assigned'] || 
+                       jobFields['Staff Assigned'] || 
+                       jobFields['staff_assigned'];
     return staffValue || "Unassigned";
   }
 

@@ -199,6 +199,32 @@ export async function registerRoutes(
     }
   });
 
+  // Debug endpoint to test custom fields API
+  app.get("/api/debug/custom-fields", async (req, res) => {
+    try {
+      const sm8Client = createServiceM8Client();
+      if (!sm8Client) {
+        return res.status(400).json({ error: "ServiceM8 not configured" });
+      }
+      
+      const customFieldMap = await sm8Client.fetchAllJobCustomFields();
+      
+      // Convert Map to object for JSON response
+      const result: Record<string, any> = {};
+      customFieldMap.forEach((value, key) => {
+        result[key] = value;
+      });
+      
+      res.json({
+        totalJobs: customFieldMap.size,
+        customFields: result
+      });
+    } catch (error: any) {
+      console.error("Error fetching custom fields:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ============ ServiceM8 OAuth 2.0 Routes ============
 
   // Get OAuth status (check if we have a valid token)
