@@ -316,13 +316,13 @@ export async function registerRoutes(
     return `https://${req.get('host')}`;
   };
 
-  // Start OAuth flow - redirect to ServiceM8 authorization
+  // Start OAuth flow - redirect to ServiceM8 authorization (API route)
   app.get("/api/auth/servicem8/login", (req, res) => {
     if (!SM8_OAUTH_CONFIG.clientId) {
       return res.status(400).json({ error: "ServiceM8 OAuth not configured. Missing SERVICEM8_CLIENT_ID." });
     }
 
-    const redirectUri = `${getBaseUrl(req)}/api/auth/servicem8/callback`;
+    const redirectUri = `${getBaseUrl(req)}/auth/servicem8/callback`;
     const authUrl = new URL(SM8_OAUTH_CONFIG.authorizeUrl);
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("client_id", SM8_OAUTH_CONFIG.clientId);
@@ -333,7 +333,84 @@ export async function registerRoutes(
     res.redirect(authUrl.toString());
   });
 
-  // OAuth callback - exchange code for tokens
+  // ServiceM8 addon activation URL - starts OAuth flow
+  app.get("/connect/servicem8", (req, res) => {
+    if (!SM8_OAUTH_CONFIG.clientId) {
+      return res.status(400).send("ServiceM8 OAuth not configured. Missing SERVICEM8_CLIENT_ID.");
+    }
+
+    const redirectUri = `${getBaseUrl(req)}/auth/servicem8/callback`;
+    const authUrl = new URL(SM8_OAUTH_CONFIG.authorizeUrl);
+    authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("client_id", SM8_OAUTH_CONFIG.clientId);
+    authUrl.searchParams.set("redirect_uri", redirectUri);
+    authUrl.searchParams.set("scope", SM8_OAUTH_CONFIG.scopes);
+
+    console.log("ServiceM8 addon connect - redirecting to OAuth:", authUrl.toString());
+    res.redirect(authUrl.toString());
+  });
+
+  // OAuth callback - exchange code for tokens (non-API route for ServiceM8 addon)
+  app.get("/auth/servicem8/callback", async (req, res) => {
+    console.log("OAuth callback received:", req.query);
+    const { code, error: oauthError } = req.query;
+
+    if (oauthError) {
+      console.error("OAuth error:", oauthError);
+      return res.redirect("/?oauth_error=" + encodeURIComponent(String(oauthError)));
+    }
+
+    if (!code) {
+      console.error("No code in OAuth callback");
+      return res.redirect("/?oauth_error=no_code");
+    }
+
+    try {
+      const redirectUri = `${getBaseUrl(req)}/auth/servicem8/callback`;
+      
+      const tokenResponse = await fetch(SM8_OAUTH_CONFIG.tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code: String(code),
+          client_id: SM8_OAUTH_CONFIG.clientId,
+          client_secret: SM8_OAUTH_CONFIG.clientSecret,
+          redirect_uri: redirectUri,
+        }),
+      });
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        console.error("Token exchange failed:", tokenResponse.status, errorText);
+        return res.redirect("/?oauth_error=token_exchange_failed");
+      }
+
+      const tokenData = await tokenResponse.json();
+      console.log("OAuth token received successfully");
+
+      const expiresAt = tokenData.expires_in 
+        ? new Date(Date.now() + tokenData.expires_in * 1000)
+        : null;
+
+      await storage.saveOAuthToken({
+        provider: "servicem8",
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token || null,
+        expiresAt: expiresAt,
+        scope: SM8_OAUTH_CONFIG.scopes,
+      });
+
+      res.redirect("/?oauth_success=true");
+    } catch (error) {
+      console.error("OAuth callback error:", error);
+      res.redirect("/?oauth_error=callback_failed");
+    }
+  });
+
+  // OAuth callback - API route (redirects to non-API route)
   app.get("/api/auth/servicem8/callback", async (req, res) => {
     const { code, error: oauthError } = req.query;
 

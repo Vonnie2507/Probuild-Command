@@ -1,0 +1,112 @@
+1. What that ?oauth_error=no_code actually means
+
+That error is coming from your app, not ServiceM8.
+
+It means:
+
+“I hit the OAuth callback route, but there was no code query parameter in the URL.”
+
+That usually happens when:
+
+The redirect URI in ServiceM8 doesn’t exactly match what your app expects, or
+
+You’re hitting the callback URL directly in the browser (instead of going through the full OAuth flow).
+
+2. Your ServiceM8 settings (from the screenshot)
+
+Right now you have:
+
+Addon Type: External Integration ✅
+
+Addon Activation URL:
+https://probuildcommand.replit.app/api/auth/servicem8/callback ❌
+
+This is the main confusion:
+
+You’ve pointed the Activation URL at the callback path, and it also has /api/auth/… which doesn’t match the routes we talked about earlier.
+
+3. How the URLs should be wired
+
+Think of it as 2 separate URLs:
+
+Connect URL – where the user starts the connection
+
+Callback URL – where ServiceM8 sends the user back with ?code=...
+
+✅ 1) Activation / “start OAuth” URL
+
+Set this in Addon Activation URL:
+
+https://probuildcommand.replit.app/connect/servicem8
+
+
+This is a route in your app that redirects to:
+
+https://go.servicem8.com/oauth/authorize?...&redirect_uri=...
+
+✅ 2) OAuth redirect / callback URL
+
+In your OAuth settings / return URL for the app (and in your code) use:
+
+https://probuildcommand.replit.app/auth/servicem8/callback
+
+
+This is the route in your code that:
+
+Reads ?code=...
+
+Exchanges it for tokens at https://go.servicem8.com/oauth/access_token
+
+Right now you’ve got /api/auth/servicem8/callback in the Activation URL, which is why everything is weird.
+
+4. What to change right now
+
+In the ServiceM8 developer portal:
+
+Addon Activation URL →
+https://probuildcommand.replit.app/connect/servicem8
+
+Make sure the OAuth Redirect / Return URL for the app is:
+https://probuildcommand.replit.app/auth/servicem8/callback
+
+In your code, your routes should look like:
+
+// Start OAuth
+app.get("/connect/servicem8", (req, res) => {
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: process.env.SERVICEM8_APP_ID,
+    scope: "read_customers read_jobs publish_sms publish_email",
+    redirect_uri: "https://probuildcommand.replit.app/auth/servicem8/callback",
+  });
+
+  res.redirect(`https://go.servicem8.com/oauth/authorize?${params.toString()}`);
+});
+
+// OAuth callback
+app.get("/auth/servicem8/callback", async (req, res) => {
+  console.log("Callback query:", req.query); // you should see { code: '...' }
+
+  const code = req.query.code;
+  if (!code) {
+    return res.status(400).send("No ?code returned from ServiceM8");
+  }
+
+  // ... then exchange code for tokens
+});
+
+
+Now visit in your browser:
+
+https://probuildcommand.replit.app/connect/servicem8
+
+
+You should:
+
+See the ServiceM8 “Allow access?” screen
+
+Click allow
+
+Get sent back to /auth/servicem8/callback?code=... (no more oauth_error=no_code)
+
+If you paste your current server file (or whatever handles routes), I can rewrite the exact connect + callback routes so they match your structure and you don’t end up fighting URLs anymore.
