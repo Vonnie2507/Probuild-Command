@@ -123,11 +123,12 @@ export async function registerRoutes(
 
       try {
         // Bulk fetch all data in parallel for speed (including custom fields for staff assignment)
-        const [sm8Jobs, contactMap, companyMap, customFieldMap] = await Promise.all([
+        const [sm8Jobs, contactMap, companyMap, customFieldMap, notesMap] = await Promise.all([
           sm8Client.fetchJobs(),
           sm8Client.fetchAllJobContacts(),
           sm8Client.fetchAllCompanies(),
-          sm8Client.fetchAllJobCustomFields()
+          sm8Client.fetchAllJobCustomFields(),
+          sm8Client.fetchAllJobNotes()
         ]);
         
         for (const sm8Job of sm8Jobs) {
@@ -151,6 +152,17 @@ export async function registerRoutes(
           }
           
           const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName, customFieldMap);
+          
+          // Add communication history from notes
+          const lastComm = notesMap.get(sm8Job.uuid);
+          if (lastComm) {
+            (mappedJob as any).lastCommunicationDate = lastComm.date;
+            (mappedJob as any).lastCommunicationType = lastComm.type;
+            // Also update daysSinceLastContact based on communication
+            const daysSince = Math.floor((Date.now() - lastComm.date.getTime()) / (1000 * 60 * 60 * 24));
+            mappedJob.daysSinceLastContact = daysSince;
+          }
+          
           await storage.upsertJobByServiceM8Uuid(mappedJob);
           jobsProcessed++;
         }
@@ -687,11 +699,12 @@ async function runAutoSync() {
 
     try {
       // Bulk fetch all data in parallel (including custom fields for staff assignment)
-      const [sm8Jobs, contactMap, companyMap, customFieldMap] = await Promise.all([
+      const [sm8Jobs, contactMap, companyMap, customFieldMap, notesMap] = await Promise.all([
         sm8Client.fetchJobs(),
         sm8Client.fetchAllJobContacts(),
         sm8Client.fetchAllCompanies(),
-        sm8Client.fetchAllJobCustomFields()
+        sm8Client.fetchAllJobCustomFields(),
+        sm8Client.fetchAllJobNotes()
       ]);
       
       for (const sm8Job of sm8Jobs) {
@@ -715,6 +728,16 @@ async function runAutoSync() {
         }
         
         const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName, customFieldMap);
+        
+        // Add communication history from notes
+        const lastComm = notesMap.get(sm8Job.uuid);
+        if (lastComm) {
+          (mappedJob as any).lastCommunicationDate = lastComm.date;
+          (mappedJob as any).lastCommunicationType = lastComm.type;
+          const daysSince = Math.floor((Date.now() - lastComm.date.getTime()) / (1000 * 60 * 60 * 24));
+          mappedJob.daysSinceLastContact = daysSince;
+        }
+        
         await storage.upsertJobByServiceM8Uuid(mappedJob);
         jobsProcessed++;
       }

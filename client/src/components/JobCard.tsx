@@ -92,7 +92,10 @@ export function JobCard({ job, index }: JobCardProps) {
                   "flex items-center gap-1.5 px-1.5 py-1 rounded bg-background border",
                   job.daysSinceLastContact > 3 ? "text-red-600 border-red-100 bg-red-50" : "border-border"
                 )}>
-                  <MessageSquare className="h-3 w-3" />
+                  {job.lastCommunicationType === 'email' ? <Mail className="h-3 w-3" /> :
+                   job.lastCommunicationType === 'call' ? <Phone className="h-3 w-3" /> :
+                   job.lastCommunicationType === 'sms' ? <MessageSquare className="h-3 w-3" /> :
+                   <MessageSquare className="h-3 w-3" />}
                   <span>{job.daysSinceLastContact}d ago</span>
                 </div>
                 

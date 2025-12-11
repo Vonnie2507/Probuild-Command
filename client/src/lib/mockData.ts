@@ -41,6 +41,10 @@ export interface Job {
   
   // Work type for dynamic stage tracking
   workTypeId?: number;
+  
+  // Communication tracking
+  lastCommunicationDate?: Date;
+  lastCommunicationType?: 'email' | 'sms' | 'call' | 'note';
 }
 
 // Scheduler Kanban columns for work orders

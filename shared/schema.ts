@@ -55,6 +55,8 @@ export const jobs = pgTable("jobs", {
   syncedAt: timestamp("synced_at"),
   workTypeId: integer("work_type_id"), // References work_types table for dynamic stages
   currentStageId: integer("current_stage_id"), // Current active stage
+  lastCommunicationDate: timestamp("last_communication_date"), // Last email/SMS/call
+  lastCommunicationType: text("last_communication_type"), // 'email' | 'sms' | 'call' | 'note'
 });
 
 export const insertJobSchema = createInsertSchema(jobs, {

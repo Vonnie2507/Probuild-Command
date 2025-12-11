@@ -114,6 +114,59 @@ export class ServiceM8Client {
     return contactMap;
   }
 
+  // Fetch all job notes/diary entries for communication history
+  async fetchAllJobNotes(): Promise<Map<string, { date: Date; type: string; note: string }>> {
+    const notesMap = new Map<string, { date: Date; type: string; note: string }>();
+    try {
+      const response = await fetch(`${this.baseUrl}/note.json?%24top=5000&%24orderby=timestamp%20desc`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) {
+        console.log("[Notes] Failed to fetch notes:", response.status);
+        return notesMap;
+      }
+      const notes = await response.json();
+      console.log(`[Notes] Fetched ${notes.length} notes from ServiceM8`);
+      
+      // Group notes by job and find the most recent one
+      for (const note of notes) {
+        if (!note.related_object_uuid || note.related_object !== 'job') continue;
+        
+        const jobUuid = note.related_object_uuid;
+        const noteText = (note.note || '').toLowerCase();
+        const timestamp = note.timestamp ? new Date(note.timestamp) : new Date();
+        
+        // Determine communication type from note content
+        let commType = 'note';
+        if (noteText.includes('email') || noteText.includes('sent email') || noteText.includes('received email')) {
+          commType = 'email';
+        } else if (noteText.includes('sms') || noteText.includes('text message')) {
+          commType = 'sms';
+        } else if (noteText.includes('call') || noteText.includes('phone') || noteText.includes('spoke')) {
+          commType = 'call';
+        }
+        
+        // Only keep the most recent note per job
+        const existing = notesMap.get(jobUuid);
+        if (!existing || timestamp > existing.date) {
+          notesMap.set(jobUuid, {
+            date: timestamp,
+            type: commType,
+            note: note.note || ''
+          });
+        }
+      }
+      
+      console.log(`[Notes] Mapped last communication for ${notesMap.size} jobs`);
+    } catch (e) {
+      console.error("[Notes] Error fetching notes:", e);
+    }
+    return notesMap;
+  }
+
   // Bulk fetch all companies in one API call
   async fetchAllCompanies(): Promise<Map<string, string>> {
     const companyMap = new Map<string, string>();
