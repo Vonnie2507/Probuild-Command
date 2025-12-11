@@ -63,6 +63,141 @@ export class ServiceM8Client {
     }
   }
 
+  // Fetch full company record with all contact details
+  async fetchCompanyFull(companyUuid: string): Promise<{
+    uuid: string;
+    name: string;
+    email: string;
+    phone: string;
+    mobile: string;
+  } | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/company/${companyUuid}.json`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      return {
+        uuid: data.uuid || companyUuid,
+        name: data.name || data.company_name || "Unknown",
+        email: data.email || "",
+        phone: data.phone || "",
+        mobile: data.mobile || "",
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // Fetch all company contacts for a given company
+  async fetchCompanyContacts(companyUuid: string): Promise<Array<{
+    uuid: string;
+    name: string;
+    email: string;
+    mobile: string;
+    phone: string;
+    isPrimary: boolean;
+  }>> {
+    try {
+      const response = await fetch(`${this.baseUrl}/companycontact.json?%24filter=company_uuid%20eq%20'${companyUuid}'`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) return [];
+      const contacts = await response.json();
+      return contacts.map((c: any) => ({
+        uuid: c.uuid || "",
+        name: [c.first, c.last].filter(Boolean).join(" ") || "Unknown",
+        email: c.email || "",
+        mobile: c.mobile || "",
+        phone: c.phone || "",
+        isPrimary: c.is_primary === 1 || c.is_primary === true,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  // Bulk fetch all companies with full details
+  async fetchAllCompaniesFull(): Promise<Map<string, {
+    uuid: string;
+    name: string;
+    email: string;
+    phone: string;
+    mobile: string;
+  }>> {
+    const companyMap = new Map();
+    try {
+      const response = await fetch(`${this.baseUrl}/company.json?%24top=5000`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) return companyMap;
+      const companies = await response.json();
+      for (const c of companies) {
+        if (c.uuid) {
+          companyMap.set(c.uuid, {
+            uuid: c.uuid,
+            name: c.name || c.company_name || "Unknown",
+            email: c.email || "",
+            phone: c.phone || "",
+            mobile: c.mobile || "",
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching all companies full:", e);
+    }
+    return companyMap;
+  }
+
+  // Bulk fetch all company contacts
+  async fetchAllCompanyContacts(): Promise<Map<string, Array<{
+    uuid: string;
+    name: string;
+    email: string;
+    mobile: string;
+    phone: string;
+    isPrimary: boolean;
+  }>>> {
+    const contactMap = new Map();
+    try {
+      const response = await fetch(`${this.baseUrl}/companycontact.json?%24top=5000`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) return contactMap;
+      const contacts = await response.json();
+      for (const c of contacts) {
+        if (c.company_uuid) {
+          const contact = {
+            uuid: c.uuid || "",
+            name: [c.first, c.last].filter(Boolean).join(" ") || "Unknown",
+            email: c.email || "",
+            mobile: c.mobile || "",
+            phone: c.phone || "",
+            isPrimary: c.is_primary === 1 || c.is_primary === true,
+          };
+          const existing = contactMap.get(c.company_uuid) || [];
+          existing.push(contact);
+          contactMap.set(c.company_uuid, existing);
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching all company contacts:", e);
+    }
+    return contactMap;
+  }
+
   async fetchJobContact(jobUuid: string): Promise<{ first: string; last: string; phone?: string; mobile?: string; email?: string } | null> {
     try {
       const response = await fetch(`${this.baseUrl}/jobcontact.json?%24filter=job_uuid%20eq%20'${jobUuid}'`, {

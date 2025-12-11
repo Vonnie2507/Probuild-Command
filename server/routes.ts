@@ -371,6 +371,122 @@ export async function registerRoutes(
     }
   });
 
+  // Get enriched job cards with company info and contacts from ServiceM8
+  app.get("/api/jobCards", async (req, res) => {
+    try {
+      const token = await getValidOAuthToken();
+      if (!token) {
+        return res.status(401).json({ 
+          error: "ServiceM8 not connected",
+          message: "Please connect to ServiceM8 in Settings first"
+        });
+      }
+
+      const baseUrl = "https://api.servicem8.com/api_1.0";
+      const headers = {
+        "Authorization": `Bearer ${token.accessToken}`,
+        "Accept": "application/json",
+      };
+
+      // Fetch all jobs, companies, and company contacts in parallel
+      const [jobsResponse, companiesResponse, contactsResponse] = await Promise.all([
+        fetch(`${baseUrl}/job.json?%24filter=active%20eq%201&%24top=1000`, { headers }),
+        fetch(`${baseUrl}/company.json?%24top=5000`, { headers }),
+        fetch(`${baseUrl}/companycontact.json?%24top=5000`, { headers }),
+      ]);
+
+      if (!jobsResponse.ok) {
+        console.error("Failed to fetch jobs:", jobsResponse.status);
+        return res.status(jobsResponse.status).json({ error: "Failed to fetch jobs from ServiceM8" });
+      }
+
+      const jobs = await jobsResponse.json();
+      const companies = companiesResponse.ok ? await companiesResponse.json() : [];
+      const contacts = contactsResponse.ok ? await contactsResponse.json() : [];
+
+      // Build company map
+      const companyMap = new Map<string, {
+        uuid: string;
+        name: string;
+        email: string;
+        phone: string;
+        mobile: string;
+      }>();
+      for (const c of companies) {
+        if (c.uuid) {
+          companyMap.set(c.uuid, {
+            uuid: c.uuid,
+            name: c.name || c.company_name || "Unknown",
+            email: c.email || "",
+            phone: c.phone || "",
+            mobile: c.mobile || "",
+          });
+        }
+      }
+
+      // Build contacts map grouped by company_uuid
+      const contactsMap = new Map<string, Array<{
+        uuid: string;
+        name: string;
+        email: string;
+        mobile: string;
+        phone: string;
+        isPrimary: boolean;
+      }>>();
+      for (const c of contacts) {
+        if (c.company_uuid) {
+          const contact = {
+            uuid: c.uuid || "",
+            name: [c.first, c.last].filter(Boolean).join(" ") || "Unknown",
+            email: c.email || "",
+            mobile: c.mobile || "",
+            phone: c.phone || "",
+            isPrimary: c.is_primary === 1 || c.is_primary === true,
+          };
+          const existing = contactsMap.get(c.company_uuid) || [];
+          existing.push(contact);
+          contactsMap.set(c.company_uuid, existing);
+        }
+      }
+
+      // Enrich each job with company info
+      const jobCards = jobs.map((job: any) => {
+        const companyUuid = job.company_uuid;
+        const company = companyUuid ? companyMap.get(companyUuid) : null;
+        const companyContacts = companyUuid ? contactsMap.get(companyUuid) || [] : [];
+
+        return {
+          // Core job data
+          uuid: job.uuid,
+          jobId: job.generated_job_id ? `#${job.generated_job_id}` : "#N/A",
+          status: job.status,
+          address: job.job_address || job.billing_address || "No Address",
+          description: job.job_description || "",
+          quoteValue: parseFloat(job.total_invoice_amount) || 0,
+          quoteSent: job.quote_sent === true,
+          quoteSentDate: job.quote_sent_stamp || null,
+          quoteDate: job.quote_date || null,
+          createdAt: job.date || null,
+          
+          // Company info
+          companyUuid: companyUuid || null,
+          companyName: company?.name || "Unknown Customer",
+          companyEmail: company?.email || "",
+          companyPhone: company?.phone || "",
+          companyMobile: company?.mobile || "",
+          
+          // Company contacts array
+          contacts: companyContacts,
+        };
+      });
+
+      res.json({ jobCards });
+    } catch (error: any) {
+      console.error("Error fetching job cards:", error);
+      res.status(500).json({ error: "Failed to fetch job cards", message: error.message });
+    }
+  });
+
   // ============ ServiceM8 OAuth 2.0 Routes ============
 
   // Get OAuth status (check if we have a valid token)
