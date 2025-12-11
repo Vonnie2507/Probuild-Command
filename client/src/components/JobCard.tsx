@@ -229,15 +229,19 @@ export function JobCard({ job, index }: JobCardProps) {
                   </TooltipContent>
                 </Tooltip>
                 
-                {job.daysSinceQuoteSent !== undefined && (
+                {job.daysSinceQuoteSent !== null && job.daysSinceQuoteSent !== undefined && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div className={cn(
-                        "flex items-center gap-1.5 px-1.5 py-1 rounded bg-background border cursor-help",
-                        job.daysSinceQuoteSent > 7 ? "text-orange-600 border-orange-100 bg-orange-50" : "border-border"
+                        "flex items-center gap-1.5 px-1.5 py-1 rounded border cursor-help font-medium",
+                        job.daysSinceQuoteSent <= 10 
+                          ? "text-green-700 border-green-300 bg-green-100" 
+                          : job.daysSinceQuoteSent <= 15 
+                            ? "text-yellow-700 border-yellow-300 bg-yellow-100" 
+                            : "text-red-700 border-red-300 bg-red-100"
                       )}>
                         <CalendarClock className="h-3 w-3" />
-                        <span>Quote: {job.daysSinceQuoteSent}d</span>
+                        <span>{job.daysSinceQuoteSent}d since quote</span>
                       </div>
                     </TooltipTrigger>
                     <TooltipContent side="top">

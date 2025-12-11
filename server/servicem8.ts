@@ -280,6 +280,28 @@ export class ServiceM8Client {
       ? this.getStaffAssigned(sm8Job.uuid, customFieldMap) 
       : "Unassigned";
 
+    // Calculate days since quote was sent
+    let daysSinceQuoteSent: number | null = null;
+    // quote_sent is a timestamp like "2025-11-26 10:30:00" when quote was sent
+    // or empty/"" if no quote has been sent yet
+    const quoteSentValue = sm8Job.quote_sent ? String(sm8Job.quote_sent).trim() : '';
+    if (quoteSentValue && quoteSentValue !== '' && quoteSentValue !== '0') {
+      try {
+        // Debug first few jobs
+        if (sm8Job.generated_job_id && parseInt(sm8Job.generated_job_id) <= 10) {
+          console.log(`[QuoteSent] Job ${sm8Job.generated_job_id}: quote_sent="${quoteSentValue}"`);
+        }
+        const quoteSentDate = new Date(quoteSentValue.replace(' ', 'T'));
+        if (!isNaN(quoteSentDate.getTime())) {
+          const now = new Date();
+          const diffTime = now.getTime() - quoteSentDate.getTime();
+          daysSinceQuoteSent = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        }
+      } catch (e) {
+        // Invalid date format, keep as null
+      }
+    }
+
     return {
       serviceM8Uuid: sm8Job.uuid,
       jobId: sm8Job.generated_job_id ? `#${sm8Job.generated_job_id}` : "#N/A",
@@ -290,6 +312,7 @@ export class ServiceM8Client {
       status: appStatus,
       lifecyclePhase: lifecyclePhase,
       schedulerStage: schedulerStage,
+      daysSinceQuoteSent: daysSinceQuoteSent,
       daysSinceLastContact: 0,
       assignedStaff: staffAssigned,
       lastNote: sm8Job.work_done_description || "",
