@@ -23,6 +23,24 @@ interface ServiceM8Note {
   active?: number;
 }
 
+interface ServiceM8Activity {
+  uuid: string;
+  job_uuid: string;
+  activity_was_scheduled: number;
+  staff_uuid: string;
+  start_date: string;
+  end_date: string;
+  active: number;
+}
+
+interface CommunicationItem {
+  uuid: string;
+  date: string;
+  type: 'note' | 'activity' | 'email' | 'sms' | 'call';
+  content: string;
+  staffName?: string;
+}
+
 interface JobCardProps {
   job: Job;
   index: number;
@@ -30,7 +48,7 @@ interface JobCardProps {
 
 export function JobCard({ job, index }: JobCardProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [notes, setNotes] = useState<ServiceM8Note[]>([]);
+  const [communications, setCommunications] = useState<CommunicationItem[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
   
@@ -38,7 +56,7 @@ export function JobCard({ job, index }: JobCardProps) {
     if (detailsOpen && job.serviceM8Uuid) {
       setLoadingNotes(true);
       setNotesError(null);
-      fetch(`/api/servicem8/job-notes/${job.serviceM8Uuid}`)
+      fetch(`/api/servicem8/job-history/${job.serviceM8Uuid}`)
         .then(async res => {
           if (!res.ok) {
             const data = await res.json();
@@ -47,28 +65,63 @@ export function JobCard({ job, index }: JobCardProps) {
           return res.json();
         })
         .then(data => {
-          if (Array.isArray(data)) {
-            const sorted = data.sort((a: ServiceM8Note, b: ServiceM8Note) => 
-              new Date(b.create_date.replace(' ', 'T')).getTime() - new Date(a.create_date.replace(' ', 'T')).getTime()
-            );
-            setNotes(sorted);
+          const items: CommunicationItem[] = [];
+          
+          // Process notes
+          if (Array.isArray(data.notes)) {
+            for (const note of data.notes) {
+              const noteText = (note.note || '').toLowerCase();
+              let commType: CommunicationItem['type'] = 'note';
+              if (noteText.includes('email') || noteText.includes('sent email')) {
+                commType = 'email';
+              } else if (noteText.includes('sms') || noteText.includes('text')) {
+                commType = 'sms';
+              } else if (noteText.includes('call') || noteText.includes('phone') || noteText.includes('spoke') || noteText.includes('rang')) {
+                commType = 'call';
+              }
+              
+              items.push({
+                uuid: note.uuid,
+                date: note.create_date?.replace(' ', 'T') || new Date().toISOString(),
+                type: commType,
+                content: note.note || '',
+                staffName: note.created_by_staff_name
+              });
+            }
           }
+          
+          // Process activities (scheduled visits, etc.)
+          if (Array.isArray(data.activities)) {
+            for (const activity of data.activities) {
+              items.push({
+                uuid: activity.uuid,
+                date: activity.start_date?.replace(' ', 'T') || new Date().toISOString(),
+                type: 'activity',
+                content: `Scheduled activity: ${activity.start_date} - ${activity.end_date}`
+              });
+            }
+          }
+          
+          // Sort by date descending
+          items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          setCommunications(items);
         })
         .catch(err => {
-          console.error("Failed to fetch notes:", err);
-          setNotesError(err.message || "Failed to load notes");
+          console.error("Failed to fetch job history:", err);
+          setNotesError(err.message || "Failed to load communication history");
         })
         .finally(() => setLoadingNotes(false));
     }
   }, [detailsOpen, job.serviceM8Uuid]);
   
-  const getNoteIcon = (note: ServiceM8Note) => {
-    const method = note.entry_method?.toLowerCase() || '';
-    const type = note.note_type?.toLowerCase() || '';
-    if (method.includes('email') || type.includes('email')) return <Mail className="h-4 w-4 text-purple-500" />;
-    if (method.includes('sms') || type.includes('sms')) return <MessageSquare className="h-4 w-4 text-blue-500" />;
-    if (method.includes('call') || type.includes('call') || method.includes('phone')) return <Phone className="h-4 w-4 text-green-500" />;
-    return <FileText className="h-4 w-4 text-gray-500" />;
+  const getCommIcon = (item: CommunicationItem) => {
+    switch (item.type) {
+      case 'email': return <Mail className="h-4 w-4 text-purple-500" />;
+      case 'sms': return <MessageSquare className="h-4 w-4 text-blue-500" />;
+      case 'call': return <Phone className="h-4 w-4 text-green-500" />;
+      case 'activity': return <Calendar className="h-4 w-4 text-orange-500" />;
+      default: return <FileText className="h-4 w-4 text-gray-500" />;
+    }
   };
   
   // Completed jobs are green, Quote phase jobs are orange, Work Order phase jobs are blue
@@ -362,28 +415,26 @@ export function JobCard({ job, index }: JobCardProps) {
                   <p className="text-sm text-amber-600 font-medium">{notesError}</p>
                   <p className="text-xs text-muted-foreground mt-1">Please reconnect to ServiceM8 in Settings</p>
                 </div>
-              ) : notes.length === 0 ? (
+              ) : communications.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">No communication history found</p>
               ) : (
                 <div className="space-y-3">
-                  {notes.map((note) => (
-                    <div key={note.uuid} className="flex gap-3 p-2 bg-muted/30 rounded-md">
-                      <div className="mt-0.5">{getNoteIcon(note)}</div>
+                  {communications.map((item) => (
+                    <div key={item.uuid} className="flex gap-3 p-2 bg-muted/30 rounded-md">
+                      <div className="mt-0.5">{getCommIcon(item)}</div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs font-medium text-muted-foreground">
-                            {note.create_date ? format(new Date(note.create_date.replace(' ', 'T')), 'dd MMM yyyy, h:mm a') : 'Unknown date'}
+                            {item.date ? format(new Date(item.date), 'dd MMM yyyy, h:mm a') : 'Unknown date'}
                           </span>
-                          {note.created_by_staff_name && (
-                            <span className="text-xs text-muted-foreground">by {note.created_by_staff_name}</span>
+                          {item.staffName && (
+                            <span className="text-xs text-muted-foreground">by {item.staffName}</span>
                           )}
-                          {note.entry_method && (
-                            <Badge variant="outline" className="text-[10px] px-1 py-0">
-                              {note.entry_method}
-                            </Badge>
-                          )}
+                          <Badge variant="outline" className="text-[10px] px-1 py-0">
+                            {item.type}
+                          </Badge>
                         </div>
-                        <p className="text-sm whitespace-pre-wrap break-words">{note.note}</p>
+                        <p className="text-sm whitespace-pre-wrap break-words">{item.content}</p>
                       </div>
                     </div>
                   ))}
