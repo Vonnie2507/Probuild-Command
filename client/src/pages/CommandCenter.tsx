@@ -213,7 +213,12 @@ export default function CommandCenter() {
   });
 
   // Quote phase jobs for Sales section (orange cards)
-  const quoteJobs = filteredJobs.filter(job => job.lifecyclePhase === 'quote');
+  // Exclude unsuccessful and completed jobs from the sales view
+  const quoteJobs = filteredJobs.filter(job => 
+    job.lifecyclePhase === 'quote' && 
+    job.status !== 'unsuccessful' && 
+    job.status !== 'complete'
+  );
   
   // Work order phase jobs for Scheduler/Production (blue cards)
   const workOrderJobs = filteredJobs.filter(job => job.lifecyclePhase === 'work_order');
