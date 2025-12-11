@@ -1,15 +1,25 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Job } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
-import { CalendarClock, Mail, MessageSquare, Phone, User, AlertCircle, CheckCircle2, Clock, FileText, MapPin, DollarSign, Calendar, Briefcase, ExternalLink } from "lucide-react";
+import { CalendarClock, Mail, MessageSquare, Phone, User, AlertCircle, CheckCircle2, Clock, FileText, MapPin, DollarSign, Calendar, Briefcase, ExternalLink, Loader2 } from "lucide-react";
 import { Draggable } from "@hello-pangea/dnd";
 import { format } from "date-fns";
+
+interface ServiceM8Note {
+  uuid: string;
+  note: string;
+  timestamp: string;
+  entry_method?: string;
+  note_type?: string;
+  created_by_staff_name?: string;
+}
 
 interface JobCardProps {
   job: Job;
@@ -18,6 +28,35 @@ interface JobCardProps {
 
 export function JobCard({ job, index }: JobCardProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [notes, setNotes] = useState<ServiceM8Note[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  
+  useEffect(() => {
+    if (detailsOpen && job.serviceM8Uuid) {
+      setLoadingNotes(true);
+      fetch(`/api/servicem8/job-notes/${job.serviceM8Uuid}`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            const sorted = data.sort((a: ServiceM8Note, b: ServiceM8Note) => 
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            );
+            setNotes(sorted);
+          }
+        })
+        .catch(err => console.error("Failed to fetch notes:", err))
+        .finally(() => setLoadingNotes(false));
+    }
+  }, [detailsOpen, job.serviceM8Uuid]);
+  
+  const getNoteIcon = (note: ServiceM8Note) => {
+    const method = note.entry_method?.toLowerCase() || '';
+    const type = note.note_type?.toLowerCase() || '';
+    if (method.includes('email') || type.includes('email')) return <Mail className="h-4 w-4 text-purple-500" />;
+    if (method.includes('sms') || type.includes('sms')) return <MessageSquare className="h-4 w-4 text-blue-500" />;
+    if (method.includes('call') || type.includes('call') || method.includes('phone')) return <Phone className="h-4 w-4 text-green-500" />;
+    return <FileText className="h-4 w-4 text-gray-500" />;
+  };
   
   // Completed jobs are green, Quote phase jobs are orange, Work Order phase jobs are blue
   const getLifecycleColor = () => {
@@ -288,18 +327,51 @@ export function JobCard({ job, index }: JobCardProps) {
             </div>
           </div>
           
-          {job.lastNote && (
-            <>
-              <Separator />
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <FileText className="h-4 w-4" />
-                  <span>Last Note</span>
-                </div>
-                <p className="text-sm bg-muted/50 p-3 rounded-md italic">"{job.lastNote}"</p>
+          <Separator />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <MessageSquare className="h-4 w-4" />
+                <span>Communication History</span>
               </div>
-            </>
-          )}
+              {loadingNotes && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+            
+            <ScrollArea className="h-[200px] rounded-md border p-2">
+              {loadingNotes ? (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  Loading communication history...
+                </div>
+              ) : notes.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">No communication history found</p>
+              ) : (
+                <div className="space-y-3">
+                  {notes.map((note) => (
+                    <div key={note.uuid} className="flex gap-3 p-2 bg-muted/30 rounded-md">
+                      <div className="mt-0.5">{getNoteIcon(note)}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {format(new Date(note.timestamp), 'dd MMM yyyy, h:mm a')}
+                          </span>
+                          {note.created_by_staff_name && (
+                            <span className="text-xs text-muted-foreground">by {note.created_by_staff_name}</span>
+                          )}
+                          {note.entry_method && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0">
+                              {note.entry_method}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap break-words">{note.note}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
           
           {(job.postInstallDate || job.panelInstallDate || job.tentativePostDate || job.tentativePanelDate) && (
             <>
