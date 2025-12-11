@@ -216,6 +216,80 @@ export async function registerRoutes(
     }
   });
 
+  // Export all data for migration to production
+  app.get("/api/export", async (req, res) => {
+    try {
+      const [settings, workTypes, allStages] = await Promise.all([
+        storage.getAllAppSettings(),
+        storage.getAllWorkTypes(),
+        Promise.all((await storage.getAllWorkTypes()).map(wt => 
+          storage.getStagesForWorkType(wt.id).then(stages => ({ workTypeId: wt.id, stages }))
+        ))
+      ]);
+      
+      // Build stages map
+      const stagesMap: Record<number, any[]> = {};
+      for (const item of allStages) {
+        stagesMap[item.workTypeId] = item.stages;
+      }
+      
+      res.json({
+        exportedAt: new Date().toISOString(),
+        settings,
+        workTypes,
+        workTypeStages: stagesMap
+      });
+    } catch (error) {
+      console.error("Error exporting data:", error);
+      res.status(500).json({ error: "Failed to export data" });
+    }
+  });
+
+  // Import data from export (for production setup)
+  app.post("/api/import", async (req, res) => {
+    try {
+      const { settings, workTypes, workTypeStages } = req.body;
+      
+      // Import settings
+      if (settings) {
+        await storage.saveAllAppSettings(settings);
+      }
+      
+      // Import work types and their stages
+      if (workTypes && Array.isArray(workTypes)) {
+        for (const wt of workTypes) {
+          // Create work type (skip id to let DB assign new one)
+          const newWt = await storage.createWorkType({
+            name: wt.name,
+            description: wt.description,
+            color: wt.color,
+            isActive: wt.isActive
+          });
+          
+          // Import stages for this work type
+          const stages = workTypeStages?.[wt.id] || [];
+          for (const stage of stages) {
+            await storage.createWorkTypeStage({
+              workTypeId: newWt.id,
+              name: stage.name,
+              key: stage.key,
+              orderIndex: stage.orderIndex,
+              description: stage.description,
+              category: stage.category,
+              triggersPurchaseOrder: stage.triggersPurchaseOrder,
+              requiredMaterials: stage.requiredMaterials
+            });
+          }
+        }
+      }
+      
+      res.json({ success: true, message: "Data imported successfully" });
+    } catch (error) {
+      console.error("Error importing data:", error);
+      res.status(500).json({ error: "Failed to import data" });
+    }
+  });
+
   // Sync with ServiceM8
   app.post("/api/sync/servicem8", async (req, res) => {
     try {
