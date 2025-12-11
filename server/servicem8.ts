@@ -88,6 +88,55 @@ export class ServiceM8Client {
     }
   }
 
+  // Bulk fetch all job contacts in one API call
+  async fetchAllJobContacts(): Promise<Map<string, { first: string; last: string }>> {
+    const contactMap = new Map<string, { first: string; last: string }>();
+    try {
+      const response = await fetch(`${this.baseUrl}/jobcontact.json?%24top=5000`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) return contactMap;
+      const contacts = await response.json();
+      for (const contact of contacts) {
+        if (contact.job_uuid && (contact.first || contact.last)) {
+          contactMap.set(contact.job_uuid, {
+            first: contact.first || "",
+            last: contact.last || ""
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching all job contacts:", e);
+    }
+    return contactMap;
+  }
+
+  // Bulk fetch all companies in one API call
+  async fetchAllCompanies(): Promise<Map<string, string>> {
+    const companyMap = new Map<string, string>();
+    try {
+      const response = await fetch(`${this.baseUrl}/company.json?%24top=5000`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) return companyMap;
+      const companies = await response.json();
+      for (const company of companies) {
+        if (company.uuid && (company.name || company.company_name)) {
+          companyMap.set(company.uuid, company.name || company.company_name);
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching all companies:", e);
+    }
+    return companyMap;
+  }
+
   mapServiceM8JobToInsertJob(sm8Job: ServiceM8Job, companyName?: string): InsertJob {
     const address = sm8Job.job_address || sm8Job.billing_address || "No Address";
     const quoteValue = parseFloat(sm8Job.total_invoice_amount) || 0;

@@ -1,5 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
+import { registerRoutes, startAutoSync } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
@@ -93,6 +93,8 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      // Start automatic ServiceM8 sync every 15 minutes
+      startAutoSync(15);
     },
   );
 })();

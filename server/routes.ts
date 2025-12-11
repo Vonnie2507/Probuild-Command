@@ -122,19 +122,23 @@ export async function registerRoutes(
       let errorMessage = null;
 
       try {
-        const sm8Jobs = await sm8Client.fetchJobs();
+        // Bulk fetch all data in parallel for speed
+        const [sm8Jobs, contactMap, companyMap] = await Promise.all([
+          sm8Client.fetchJobs(),
+          sm8Client.fetchAllJobContacts(),
+          sm8Client.fetchAllCompanies()
+        ]);
         
         for (const sm8Job of sm8Jobs) {
-          // Fetch job contact to get customer name
+          // Get customer name from cached contact map, then company map
           let customerName = "Unknown Customer";
-          const contact = await sm8Client.fetchJobContact(sm8Job.uuid);
+          const contact = contactMap.get(sm8Job.uuid);
           if (contact && (contact.first || contact.last)) {
             customerName = `${contact.first} ${contact.last}`.trim();
           } else if (sm8Job.company_uuid) {
-            // Fall back to company name if no job contact
-            const company = await sm8Client.fetchCompany(sm8Job.company_uuid);
-            if (company && company.name) {
-              customerName = company.name;
+            const companyName = companyMap.get(sm8Job.company_uuid);
+            if (companyName) {
+              customerName = companyName;
             }
           }
           
@@ -433,4 +437,86 @@ export async function registerRoutes(
   });
 
   return httpServer;
+}
+
+// Auto-sync function that runs periodically
+async function runAutoSync() {
+  try {
+    const sm8Client = createServiceM8Client();
+    if (!sm8Client) {
+      console.log("[AutoSync] ServiceM8 not configured, skipping sync");
+      return;
+    }
+
+    console.log("[AutoSync] Starting automatic sync...");
+    
+    const syncLog = await storage.createSyncLog({
+      syncType: "automatic",
+      status: "in_progress",
+      startedAt: new Date(),
+      jobsProcessed: 0,
+    });
+
+    let jobsProcessed = 0;
+
+    try {
+      const [sm8Jobs, contactMap, companyMap] = await Promise.all([
+        sm8Client.fetchJobs(),
+        sm8Client.fetchAllJobContacts(),
+        sm8Client.fetchAllCompanies()
+      ]);
+      
+      for (const sm8Job of sm8Jobs) {
+        let customerName = "Unknown Customer";
+        const contact = contactMap.get(sm8Job.uuid);
+        if (contact && (contact.first || contact.last)) {
+          customerName = `${contact.first} ${contact.last}`.trim();
+        } else if (sm8Job.company_uuid) {
+          const companyName = companyMap.get(sm8Job.company_uuid);
+          if (companyName) {
+            customerName = companyName;
+          }
+        }
+        
+        const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName);
+        await storage.upsertJobByServiceM8Uuid(mappedJob);
+        jobsProcessed++;
+      }
+
+      await storage.updateSyncLog(syncLog.id, {
+        status: "success",
+        jobsProcessed,
+        completedAt: new Date(),
+      });
+
+      console.log(`[AutoSync] Successfully synced ${jobsProcessed} jobs`);
+    } catch (syncError: any) {
+      console.error("[AutoSync] Error:", syncError.message);
+      await storage.updateSyncLog(syncLog.id, {
+        status: "error",
+        jobsProcessed,
+        errorMessage: syncError.message,
+        completedAt: new Date(),
+      });
+    }
+  } catch (error: any) {
+    console.error("[AutoSync] Failed:", error.message);
+  }
+}
+
+// Start auto-sync with configurable interval (default: 15 minutes)
+export function startAutoSync(intervalMinutes: number = 15) {
+  const intervalMs = intervalMinutes * 60 * 1000;
+  
+  // Run initial sync after 10 seconds (give server time to start)
+  setTimeout(() => {
+    runAutoSync();
+  }, 10000);
+  
+  // Then run every intervalMinutes
+  setInterval(() => {
+    runAutoSync();
+  }, intervalMs);
+  
+  console.log(`[AutoSync] Scheduled to run every ${intervalMinutes} minutes`);
 }
