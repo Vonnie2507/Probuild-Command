@@ -130,15 +130,22 @@ export async function registerRoutes(
         ]);
         
         for (const sm8Job of sm8Jobs) {
-          // Get customer name from cached contact map, then company map
+          // Get customer name: prioritize company name, then job contact
           let customerName = "Unknown Customer";
-          const contact = contactMap.get(sm8Job.uuid);
-          if (contact && (contact.first || contact.last)) {
-            customerName = `${contact.first} ${contact.last}`.trim();
-          } else if (sm8Job.company_uuid) {
+          
+          // First try company name (this is the main customer record in ServiceM8)
+          if (sm8Job.company_uuid) {
             const companyName = companyMap.get(sm8Job.company_uuid);
             if (companyName) {
               customerName = companyName;
+            }
+          }
+          
+          // Fall back to job contact name if no company
+          if (customerName === "Unknown Customer") {
+            const contact = contactMap.get(sm8Job.uuid);
+            if (contact && (contact.first || contact.last)) {
+              customerName = `${contact.first} ${contact.last}`.trim();
             }
           }
           
@@ -467,14 +474,22 @@ async function runAutoSync() {
       ]);
       
       for (const sm8Job of sm8Jobs) {
+        // Get customer name: prioritize company name, then job contact
         let customerName = "Unknown Customer";
-        const contact = contactMap.get(sm8Job.uuid);
-        if (contact && (contact.first || contact.last)) {
-          customerName = `${contact.first} ${contact.last}`.trim();
-        } else if (sm8Job.company_uuid) {
+        
+        // First try company name (this is the main customer record in ServiceM8)
+        if (sm8Job.company_uuid) {
           const companyName = companyMap.get(sm8Job.company_uuid);
           if (companyName) {
             customerName = companyName;
+          }
+        }
+        
+        // Fall back to job contact name if no company
+        if (customerName === "Unknown Customer") {
+          const contact = contactMap.get(sm8Job.uuid);
+          if (contact && (contact.first || contact.last)) {
+            customerName = `${contact.first} ${contact.last}`.trim();
           }
         }
         
