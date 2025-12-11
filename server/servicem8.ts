@@ -443,13 +443,18 @@ export class ServiceM8Client {
     // Get base status mapping from ServiceM8 status
     let { lifecyclePhase, schedulerStage, appStatus } = this.mapServiceM8Status(sm8Job.status);
     
-    // Override schedulerStage based on quote_sent flag:
-    // - If quote_sent is true and still in quote phase → "quotes_sent"
-    // - If it's a work order → "new_jobs_won" (quote was won)
-    // BUT: Don't override if the job is already marked as unsuccessful or complete
-    if (lifecyclePhase === 'quote' && hasQuoteSent && appStatus !== 'unsuccessful') {
-      schedulerStage = 'quotes_sent';
-      appStatus = 'quote_sent';
+    // For Quote phase jobs:
+    // - Only show in sales pipeline if ServiceM8 status is "Quote" AND quote_sent=true
+    // - Terminal statuses (unsuccessful/complete) keep their status
+    // - Jobs without quote_sent get "quote_draft" status (not shown in sales pipeline)
+    if (lifecyclePhase === 'quote' && appStatus !== 'unsuccessful') {
+      if (hasQuoteSent) {
+        schedulerStage = 'quotes_sent';
+        appStatus = 'quote_sent';
+      } else {
+        // No quote sent yet - mark as draft (won't appear in quote_sent column)
+        appStatus = 'quote_draft';
+      }
     }
 
     return {
@@ -510,16 +515,16 @@ export class ServiceM8Client {
       return { lifecyclePhase: 'work_order', schedulerStage: 'new_jobs_won', appStatus: 'work_order' };
     }
     
-    // Quote phase statuses
+    // Quote phase statuses (will be further processed based on quote_sent flag)
     if (statusLower.includes('quote') || statusLower.includes('estimate')) {
-      return { lifecyclePhase: 'quote', schedulerStage: 'new_jobs_won', appStatus: 'quote_sent' };
+      return { lifecyclePhase: 'quote', schedulerStage: 'new_jobs_won', appStatus: 'quote_pending' };
     }
     if (statusLower.includes('lead')) {
       return { lifecyclePhase: 'quote', schedulerStage: 'new_jobs_won', appStatus: 'new_lead' };
     }
     
-    // Default to quote phase
-    return { lifecyclePhase: 'quote', schedulerStage: 'new_jobs_won', appStatus: 'new_lead' };
+    // Default to quote phase (will be processed based on quote_sent)
+    return { lifecyclePhase: 'quote', schedulerStage: 'new_jobs_won', appStatus: 'quote_pending' };
   }
 }
 
