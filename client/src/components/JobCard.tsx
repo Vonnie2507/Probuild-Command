@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Job } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
 import { CalendarClock, Mail, MessageSquare, Phone, User, AlertCircle, CheckCircle2, Clock } from "lucide-react";
@@ -33,11 +34,19 @@ export function JobCard({ job, index }: JobCardProps) {
   };
 
   const getUrgencyIcon = (urgency: Job["urgency"]) => {
-    switch (urgency) {
-      case "critical": return <AlertCircle className="h-4 w-4 text-red-500" />;
-      case "high": return <Clock className="h-4 w-4 text-orange-500" />;
-      default: return <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
-    }
+    const icons = {
+      critical: { icon: <AlertCircle className="h-4 w-4 text-red-500" />, label: "Critical priority - needs immediate attention" },
+      high: { icon: <Clock className="h-4 w-4 text-orange-500" />, label: "High priority - follow up soon" },
+      medium: { icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />, label: "Normal priority" },
+      low: { icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />, label: "Low priority" }
+    };
+    const { icon, label } = icons[urgency] || icons.medium;
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild><span>{icon}</span></TooltipTrigger>
+        <TooltipContent side="top"><p>{label}</p></TooltipContent>
+      </Tooltip>
+    );
   };
 
   return (
@@ -88,47 +97,92 @@ export function JobCard({ job, index }: JobCardProps) {
               </p>
               
               <div className="grid grid-cols-2 gap-2 text-[10px] text-muted-foreground">
-                <div className={cn(
-                  "flex items-center gap-1.5 px-1.5 py-1 rounded bg-background border",
-                  job.daysSinceLastContact > 3 ? "text-red-600 border-red-100 bg-red-50" : "border-border"
-                )}>
-                  {job.lastCommunicationType === 'email' ? <Mail className="h-3 w-3" /> :
-                   job.lastCommunicationType === 'call' ? <Phone className="h-3 w-3" /> :
-                   job.lastCommunicationType === 'sms' ? <MessageSquare className="h-3 w-3" /> :
-                   <MessageSquare className="h-3 w-3" />}
-                  <span>{job.daysSinceLastContact}d ago</span>
-                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className={cn(
+                      "flex items-center gap-1.5 px-1.5 py-1 rounded bg-background border cursor-help",
+                      job.daysSinceLastContact > 3 ? "text-red-600 border-red-100 bg-red-50" : "border-border"
+                    )}>
+                      {job.lastCommunicationType === 'email' ? <Mail className="h-3 w-3" /> :
+                       job.lastCommunicationType === 'call' ? <Phone className="h-3 w-3" /> :
+                       job.lastCommunicationType === 'sms' ? <MessageSquare className="h-3 w-3" /> :
+                       <MessageSquare className="h-3 w-3" />}
+                      <span>{job.daysSinceLastContact}d ago</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <p>Last contact: {job.lastCommunicationType === 'email' ? 'Email sent' : 
+                       job.lastCommunicationType === 'call' ? 'Phone call' : 
+                       job.lastCommunicationType === 'sms' ? 'SMS message' : 'Note added'} {job.daysSinceLastContact} days ago</p>
+                  </TooltipContent>
+                </Tooltip>
                 
                 {job.daysSinceQuoteSent !== undefined && (
-                   <div className={cn(
-                    "flex items-center gap-1.5 px-1.5 py-1 rounded bg-background border",
-                    job.daysSinceQuoteSent > 7 ? "text-orange-600 border-orange-100 bg-orange-50" : "border-border"
-                  )}>
-                    <CalendarClock className="h-3 w-3" />
-                    <span>Quote: {job.daysSinceQuoteSent}d</span>
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className={cn(
+                        "flex items-center gap-1.5 px-1.5 py-1 rounded bg-background border cursor-help",
+                        job.daysSinceQuoteSent > 7 ? "text-orange-600 border-orange-100 bg-orange-50" : "border-border"
+                      )}>
+                        <CalendarClock className="h-3 w-3" />
+                        <span>Quote: {job.daysSinceQuoteSent}d</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <p>Quote was sent {job.daysSinceQuoteSent} days ago</p>
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </div>
               
               <div className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground">
-                <User className="h-3 w-3" />
-                <span className="uppercase tracking-wider font-medium">{job.assignedStaff}</span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1 cursor-help">
+                      <User className="h-3 w-3" />
+                      <span className="uppercase tracking-wider font-medium">{job.assignedStaff}</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <p>Assigned staff member</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </CardContent>
 
             <CardFooter className="p-2 bg-muted/40 flex justify-between gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-white hover:text-green-600">
-                <Phone className="h-3.5 w-3.5" />
-              </Button>
-              <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-white hover:text-blue-600">
-                <MessageSquare className="h-3.5 w-3.5" />
-              </Button>
-              <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-white hover:text-purple-600">
-                <Mail className="h-3.5 w-3.5" />
-              </Button>
-              <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-white hover:text-orange-600 ml-auto">
-                <FileText className="h-3.5 w-3.5" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-white hover:text-green-600">
+                    <Phone className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top"><p>Call customer</p></TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-white hover:text-blue-600">
+                    <MessageSquare className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top"><p>Send SMS</p></TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-white hover:text-purple-600">
+                    <Mail className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top"><p>Send email</p></TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-white hover:text-orange-600 ml-auto">
+                    <FileText className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top"><p>View job details</p></TooltipContent>
+              </Tooltip>
             </CardFooter>
           </Card>
         </div>
