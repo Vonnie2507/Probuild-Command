@@ -322,7 +322,7 @@ export async function registerRoutes(
       return res.status(400).json({ error: "ServiceM8 OAuth not configured. Missing SERVICEM8_CLIENT_ID." });
     }
 
-    const redirectUri = `${getBaseUrl(req)}/api/auth/servicem8/callback`;
+    const redirectUri = `${getBaseUrl(req)}/auth/servicem8/callback`;
     const authUrl = new URL(SM8_OAUTH_CONFIG.authorizeUrl);
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("client_id", SM8_OAUTH_CONFIG.clientId);
@@ -331,6 +331,12 @@ export async function registerRoutes(
 
     console.log("Redirecting to ServiceM8 OAuth:", authUrl.toString());
     res.redirect(authUrl.toString());
+  });
+
+  // Redirect from non-API path to API callback (for ServiceM8 OAuth app configuration)
+  app.get("/auth/servicem8/callback", (req, res) => {
+    const queryString = new URLSearchParams(req.query as Record<string, string>).toString();
+    res.redirect(`/api/auth/servicem8/callback?${queryString}`);
   });
 
   // OAuth callback - exchange code for tokens
@@ -347,7 +353,7 @@ export async function registerRoutes(
     }
 
     try {
-      const redirectUri = `${getBaseUrl(req)}/api/auth/servicem8/callback`;
+      const redirectUri = `${getBaseUrl(req)}/auth/servicem8/callback`;
       
       const tokenResponse = await fetch(SM8_OAUTH_CONFIG.tokenUrl, {
         method: "POST",
