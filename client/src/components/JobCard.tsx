@@ -454,29 +454,31 @@ export function JobCard({ job, index }: JobCardProps) {
                   </TooltipContent>
                 </Tooltip>
                 
-                {/* Job Type Dropdown - Only show for Quote phase jobs */}
-                {job.lifecyclePhase === 'quote' && workTypes.length > 0 && (
-                  <Select
-                    value={job.workTypeId?.toString() || "none"}
-                    onValueChange={handleWorkTypeChange}
+                {/* Job Type Dropdown */}
+                <Select
+                  value={job.workTypeId?.toString() || ""}
+                  onValueChange={handleWorkTypeChange}
+                >
+                  <SelectTrigger 
+                    className="h-6 w-[120px] text-[10px] border-dashed"
+                    onClick={(e) => e.stopPropagation()}
+                    data-testid={`select-job-type-${job.id}`}
                   >
-                    <SelectTrigger 
-                      className="h-6 w-[120px] text-[10px] border-dashed"
-                      onClick={(e) => e.stopPropagation()}
-                      data-testid={`select-job-type-${job.id}`}
-                    >
-                      <Wrench className="h-3 w-3 mr-1" />
-                      <SelectValue placeholder="Job Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {workTypes.filter(wt => wt.isActive).map(wt => (
+                    <Wrench className="h-3 w-3 mr-1" />
+                    <SelectValue placeholder="Job Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workTypes.length > 0 ? (
+                      workTypes.filter(wt => wt.isActive).map(wt => (
                         <SelectItem key={wt.id} value={wt.id.toString()}>
                           {wt.name}
                         </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                      ))
+                    ) : (
+                      <SelectItem value="none" disabled>No job types configured</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             </CardContent>
 
