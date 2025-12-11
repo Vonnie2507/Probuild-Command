@@ -389,17 +389,17 @@ export function SchedulerDashboard({
                 const columnJobs = jobs.filter(j => j.lifecyclePhase === 'work_order' && j.schedulerStage === column.id);
                 return (
                   <div key={column.id} className="flex-1 min-w-[220px] max-w-[280px]">
-                    <Card className="h-full flex flex-col border-t-4 border-t-blue-500">
+                    <Card className={cn("h-full flex flex-col border-t-4", column.id === 'recently_completed' ? "border-t-green-500" : "border-t-blue-500")}>
                       <CardHeader className="p-3 pb-2 shrink-0">
                         <div className="flex justify-between items-center">
                           <CardTitle className="text-sm font-bold">{column.title}</CardTitle>
-                          <Badge variant="secondary" className="bg-blue-100 text-blue-700">{columnJobs.length}</Badge>
+                          <Badge variant="secondary" className={column.id === 'recently_completed' ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}>{columnJobs.length}</Badge>
                         </div>
                       </CardHeader>
                       <Droppable droppableId={column.id}>
                         {(provided, snapshot) => (
                           <CardContent 
-                            className={cn("p-2 flex-1 overflow-y-auto space-y-2", snapshot.isDraggingOver && "bg-blue-50")}
+                            className={cn("p-2 flex-1 overflow-y-auto space-y-2", snapshot.isDraggingOver && (column.id === 'recently_completed' ? "bg-green-50" : "bg-blue-50"))}
                             ref={provided.innerRef}
                             {...provided.droppableProps}
                           >
@@ -412,12 +412,13 @@ export function SchedulerDashboard({
                                     {...provided.dragHandleProps}
                                     data-testid={`kanban-job-${job.id}`}
                                     className={cn(
-                                      "bg-white border-l-4 border-l-blue-500 border rounded p-2 text-xs shadow-sm hover:shadow-md transition-shadow cursor-grab",
-                                      snapshot.isDragging && "shadow-lg ring-2 ring-blue-400"
+                                      "bg-white border-l-4 border rounded p-2 text-xs shadow-sm hover:shadow-md transition-shadow cursor-grab",
+                                      column.id === 'recently_completed' ? "border-l-green-500 bg-green-50/50" : "border-l-blue-500",
+                                      snapshot.isDragging && (column.id === 'recently_completed' ? "shadow-lg ring-2 ring-green-400" : "shadow-lg ring-2 ring-blue-400")
                                     )}
                                   >
                                     <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-bold text-blue-700">{job.jobId}</span>
+                                      <span className={cn("font-bold", column.id === 'recently_completed' ? "text-green-700" : "text-blue-700")}>{job.jobId}</span>
                                       <span className="text-muted-foreground ml-auto">${job.quoteValue.toLocaleString()}</span>
                                     </div>
                                     <div className="font-medium truncate mb-1">{job.customerName}</div>
