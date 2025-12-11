@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Job } from "@/lib/mockData";
+import { Job, SCHEDULER_COLUMNS } from "@/lib/mockData";
 import { useSettings } from "@/lib/settingsContext";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar as CalendarIcon, MapPin, Truck, Factory, Users, Clock, GripVertical, X, CalendarDays, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Calendar as CalendarIcon, MapPin, Truck, Factory, Users, Clock, GripVertical, X, CalendarDays, CheckCircle2, AlertTriangle, Briefcase } from "lucide-react";
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, differenceInDays, isAfter, addWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -18,9 +18,10 @@ interface SchedulerDashboardProps {
   onTentativeSchedule?: (jobId: string, type: 'posts' | 'panels', date: Date) => void;
   onUnscheduleTentative?: (jobId: string, type: 'posts' | 'panels') => void;
   onConfirmTentative?: (jobId: string, type: 'posts' | 'panels') => void;
+  onSchedulerStageChange?: (jobId: string, newStage: string) => void;
 }
 
-type SchedulerView = 'tentative' | 'install';
+type SchedulerView = 'alljobs' | 'tentative' | 'install';
 
 export function SchedulerDashboard({ 
   jobs, 
@@ -28,10 +29,11 @@ export function SchedulerDashboard({
   onUnscheduleJob,
   onTentativeSchedule,
   onUnscheduleTentative,
-  onConfirmTentative 
+  onConfirmTentative,
+  onSchedulerStageChange
 }: SchedulerDashboardProps) {
   const { staff, pipelines, getDailyInstallCapacity } = useSettings();
-  const [schedulerView, setSchedulerView] = useState<SchedulerView>('install');
+  const [schedulerView, setSchedulerView] = useState<SchedulerView>('alljobs');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [tentativeSelectedDate, setTentativeSelectedDate] = useState<Date>(addWeeks(new Date(), 2));
   const [scheduleModal, setScheduleModal] = useState<{
@@ -277,6 +279,19 @@ export function SchedulerDashboard({
           </div>
           <div className="flex bg-muted p-1 rounded-md">
             <button
+              onClick={() => setSchedulerView('alljobs')}
+              data-testid="view-alljobs"
+              className={cn(
+                "px-4 py-1.5 text-xs font-bold uppercase tracking-wide rounded-sm transition-all flex items-center gap-2",
+                schedulerView === 'alljobs' 
+                  ? "bg-white text-blue-600 shadow-sm" 
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Briefcase className="h-3.5 w-3.5" />
+              All Jobs
+            </button>
+            <button
               onClick={() => setSchedulerView('tentative')}
               data-testid="view-tentative"
               className={cn(
@@ -360,6 +375,76 @@ export function SchedulerDashboard({
               </div>
           </div>
         </div>
+
+        {/* ALL JOBS KANBAN VIEW */}
+        {schedulerView === 'alljobs' && (
+          <DragDropContext onDragEnd={(result) => {
+            if (!result.destination || !onSchedulerStageChange) return;
+            const jobId = result.draggableId.replace('kanban-', '');
+            const newStage = result.destination.droppableId;
+            onSchedulerStageChange(jobId, newStage);
+          }}>
+            <div className="flex-1 flex gap-3 overflow-x-auto pb-2">
+              {SCHEDULER_COLUMNS.map((column) => {
+                const columnJobs = jobs.filter(j => j.lifecyclePhase === 'work_order' && j.schedulerStage === column.id);
+                return (
+                  <div key={column.id} className="flex-1 min-w-[220px] max-w-[280px]">
+                    <Card className="h-full flex flex-col border-t-4 border-t-blue-500">
+                      <CardHeader className="p-3 pb-2 shrink-0">
+                        <div className="flex justify-between items-center">
+                          <CardTitle className="text-sm font-bold">{column.title}</CardTitle>
+                          <Badge variant="secondary" className="bg-blue-100 text-blue-700">{columnJobs.length}</Badge>
+                        </div>
+                      </CardHeader>
+                      <Droppable droppableId={column.id}>
+                        {(provided, snapshot) => (
+                          <CardContent 
+                            className={cn("p-2 flex-1 overflow-y-auto space-y-2", snapshot.isDraggingOver && "bg-blue-50")}
+                            ref={provided.innerRef}
+                            {...provided.droppableProps}
+                          >
+                            {columnJobs.map((job, index) => (
+                              <Draggable key={job.id} draggableId={`kanban-${job.id}`} index={index}>
+                                {(provided, snapshot) => (
+                                  <div
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    {...provided.dragHandleProps}
+                                    data-testid={`kanban-job-${job.id}`}
+                                    className={cn(
+                                      "bg-white border-l-4 border-l-blue-500 border rounded p-2 text-xs shadow-sm hover:shadow-md transition-shadow cursor-grab",
+                                      snapshot.isDragging && "shadow-lg ring-2 ring-blue-400"
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="font-bold text-blue-700">{job.jobId}</span>
+                                      <span className="text-muted-foreground ml-auto">${job.quoteValue.toLocaleString()}</span>
+                                    </div>
+                                    <div className="font-medium truncate mb-1">{job.customerName}</div>
+                                    <div className="text-muted-foreground flex items-center gap-1 truncate">
+                                      <MapPin className="h-3 w-3 shrink-0" /> 
+                                      <span className="truncate">{job.address.split('\n')[0]}</span>
+                                    </div>
+                                  </div>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                            {columnJobs.length === 0 && (
+                              <div className="text-center text-xs text-muted-foreground py-8">
+                                No jobs
+                              </div>
+                            )}
+                          </CardContent>
+                        )}
+                      </Droppable>
+                    </Card>
+                  </div>
+                );
+              })}
+            </div>
+          </DragDropContext>
+        )}
 
         {/* INSTALL CALENDAR VIEW */}
         {schedulerView === 'install' && (

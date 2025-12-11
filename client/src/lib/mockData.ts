@@ -1,5 +1,8 @@
 import { addDays, subDays } from "date-fns";
 
+export type LifecyclePhase = 'quote' | 'work_order';
+export type SchedulerStage = 'new_jobs_won' | 'in_production' | 'waiting_supplier' | 'waiting_client' | 'need_to_go_back' | 'recently_completed';
+
 export interface Job {
   id: string;
   jobId: string; // ServiceM8 ID like #1042
@@ -8,6 +11,8 @@ export interface Job {
   description: string;
   quoteValue: number;
   status: string; // The raw ServiceM8 status or our mapped column
+  lifecyclePhase: LifecyclePhase; // 'quote' (orange) or 'work_order' (blue)
+  schedulerStage: SchedulerStage; // Kanban column for work orders
   daysSinceQuoteSent?: number;
   daysSinceLastContact: number;
   assignedStaff: string;
@@ -34,6 +39,16 @@ export interface Job {
   panelInstallDuration: number; // hours
   panelInstallCrewSize: number;
 }
+
+// Scheduler Kanban columns for work orders
+export const SCHEDULER_COLUMNS = [
+  { id: 'new_jobs_won', title: 'New Jobs Won' },
+  { id: 'in_production', title: 'In Production' },
+  { id: 'waiting_supplier', title: 'Waiting on Supplier/Parts' },
+  { id: 'waiting_client', title: 'Waiting on Client' },
+  { id: 'need_to_go_back', title: 'Need to Go Back' },
+  { id: 'recently_completed', title: 'Recently Completed' },
+] as const;
 
 export type StaffMember = {
   id: string;

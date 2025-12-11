@@ -1,4 +1,4 @@
-import { type InsertJob } from "@shared/schema";
+import { type InsertJob, type LifecyclePhase, type SchedulerStage } from "@shared/schema";
 
 interface ServiceM8Job {
   uuid: string;
@@ -17,6 +17,11 @@ interface ServiceM8Job {
   badges: string;
   [key: string]: any;
 }
+
+// ServiceM8 status values that indicate Quote phase
+const QUOTE_STATUSES = ['Quote', 'Lead', 'Estimate', 'Pending', 'Draft'];
+// ServiceM8 status values that indicate Work Order phase  
+const WORK_ORDER_STATUSES = ['Work Order', 'In Progress', 'Scheduled', 'Completed', 'Job Complete'];
 
 export class ServiceM8Client {
   private baseUrl = "https://api.servicem8.com/api_1.0";
@@ -58,9 +63,11 @@ export class ServiceM8Client {
   }
 
   mapServiceM8JobToInsertJob(sm8Job: ServiceM8Job, companyName?: string): InsertJob {
-    const status = this.mapServiceM8StatusToAppStatus(sm8Job.status);
     const address = sm8Job.job_address || sm8Job.billing_address || "No Address";
     const quoteValue = parseFloat(sm8Job.total_invoice_amount) || 0;
+    
+    // Determine lifecycle phase and scheduler stage based on ServiceM8 status
+    const { lifecyclePhase, schedulerStage, appStatus } = this.mapServiceM8Status(sm8Job.status);
 
     return {
       serviceM8Uuid: sm8Job.uuid,
@@ -69,7 +76,9 @@ export class ServiceM8Client {
       address: address,
       description: sm8Job.job_description || "PVC Fencing Installation",
       quoteValue: quoteValue,
-      status: status,
+      status: appStatus,
+      lifecyclePhase: lifecyclePhase,
+      schedulerStage: schedulerStage,
       daysSinceLastContact: 0,
       assignedStaff: "wayne",
       lastNote: sm8Job.work_done_description || "",
@@ -87,19 +96,39 @@ export class ServiceM8Client {
     };
   }
 
-  private mapServiceM8StatusToAppStatus(sm8Status: string): string {
-    // Map ServiceM8 queue statuses to app statuses
-    const statusMap: Record<string, string> = {
-      "New Lead": "new_lead",
-      "Contacted": "contacted",
-      "Quote Sent": "quote_sent",
-      "Deposit Paid": "deposit_paid",
-      "In Production": "man_posts",
-      "Job Complete": "complete",
-      // Add more mappings based on your ServiceM8 setup
-    };
-
-    return statusMap[sm8Status] || "new_lead";
+  private mapServiceM8Status(sm8Status: string): { 
+    lifecyclePhase: LifecyclePhase; 
+    schedulerStage: SchedulerStage; 
+    appStatus: string;
+  } {
+    const statusLower = sm8Status.toLowerCase();
+    
+    // Check if it's a Work Order status
+    if (WORK_ORDER_STATUSES.some(s => statusLower.includes(s.toLowerCase()))) {
+      // Map to specific scheduler stages
+      if (statusLower.includes('complete')) {
+        return { lifecyclePhase: 'work_order', schedulerStage: 'recently_completed', appStatus: 'complete' };
+      }
+      if (statusLower.includes('progress') || statusLower.includes('production')) {
+        return { lifecyclePhase: 'work_order', schedulerStage: 'in_production', appStatus: 'in_production' };
+      }
+      if (statusLower.includes('scheduled')) {
+        return { lifecyclePhase: 'work_order', schedulerStage: 'in_production', appStatus: 'scheduled' };
+      }
+      // Default work order goes to new_jobs_won
+      return { lifecyclePhase: 'work_order', schedulerStage: 'new_jobs_won', appStatus: 'work_order' };
+    }
+    
+    // Quote phase statuses
+    if (statusLower.includes('quote') || statusLower.includes('estimate')) {
+      return { lifecyclePhase: 'quote', schedulerStage: 'new_jobs_won', appStatus: 'quote_sent' };
+    }
+    if (statusLower.includes('lead')) {
+      return { lifecyclePhase: 'quote', schedulerStage: 'new_jobs_won', appStatus: 'new_lead' };
+    }
+    
+    // Default to quote phase
+    return { lifecyclePhase: 'quote', schedulerStage: 'new_jobs_won', appStatus: 'new_lead' };
   }
 }
 

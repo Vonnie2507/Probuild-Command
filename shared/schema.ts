@@ -3,6 +3,21 @@ import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, real } from
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Lifecycle phases for job categorization
+export const LIFECYCLE_PHASES = ['quote', 'work_order'] as const;
+export type LifecyclePhase = typeof LIFECYCLE_PHASES[number];
+
+// Scheduler stages for work order Kanban
+export const SCHEDULER_STAGES = [
+  'new_jobs_won',
+  'in_production', 
+  'waiting_supplier',
+  'waiting_client',
+  'need_to_go_back',
+  'recently_completed'
+] as const;
+export type SchedulerStage = typeof SCHEDULER_STAGES[number];
+
 // Jobs Table
 export const jobs = pgTable("jobs", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -13,6 +28,8 @@ export const jobs = pgTable("jobs", {
   description: text("description"),
   quoteValue: real("quote_value"),
   status: text("status").notNull(),
+  lifecyclePhase: text("lifecycle_phase").notNull().default("quote"), // 'quote' | 'work_order'
+  schedulerStage: text("scheduler_stage").notNull().default("new_jobs_won"), // Kanban column for work orders
   daysSinceQuoteSent: integer("days_since_quote_sent"),
   daysSinceLastContact: integer("days_since_last_contact").notNull(),
   assignedStaff: text("assigned_staff"),

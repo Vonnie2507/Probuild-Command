@@ -25,6 +25,8 @@ function mapDbJobToJob(dbJob: SelectJob): Job {
     description: dbJob.description || "",
     quoteValue: dbJob.quoteValue || 0,
     status: dbJob.status || "new_lead",
+    lifecyclePhase: (dbJob.lifecyclePhase as Job["lifecyclePhase"]) || "quote",
+    schedulerStage: (dbJob.schedulerStage as Job["schedulerStage"]) || "new_jobs_won",
     daysSinceQuoteSent: dbJob.daysSinceQuoteSent || undefined,
     daysSinceLastContact: dbJob.daysSinceLastContact || 0,
     assignedStaff: dbJob.assignedStaff || "wayne",
@@ -191,6 +193,13 @@ export default function CommandCenter() {
         } 
       });
     }
+  };
+
+  const handleSchedulerStageChange = (jobId: string, newStage: string) => {
+    updateJobMutation.mutate({ 
+      id: jobId, 
+      updates: { schedulerStage: newStage } 
+    });
   };
 
   const filteredJobs = jobs.filter((job) => {
@@ -370,6 +379,7 @@ export default function CommandCenter() {
             onTentativeSchedule={handleTentativeSchedule}
             onUnscheduleTentative={handleUnscheduleTentative}
             onConfirmTentative={handleConfirmTentative}
+            onSchedulerStageChange={handleSchedulerStageChange}
           />
         )}
       </main>
