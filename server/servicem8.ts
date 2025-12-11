@@ -442,13 +442,20 @@ export class ServiceM8Client {
     let { lifecyclePhase, schedulerStage, appStatus } = this.mapServiceM8Status(sm8Job.status);
     
     // For Quote phase jobs:
-    // - Jobs with quote_sent=true go to "quote_sent" column
+    // - Jobs with quote_sent=true: assign to quotes pipeline columns based on days since sent
+    //   - 0-3 days: "fresh" (Fresh column)
+    //   - 4+ days: "awaiting_reply" (Awaiting Reply column)
     // - Jobs without quote sent go to "new_lead" column
     // - Terminal statuses (unsuccessful/complete) keep their status and are excluded
     if (lifecyclePhase === 'quote' && appStatus !== 'unsuccessful') {
       if (hasQuoteSent) {
         schedulerStage = 'quotes_sent';
-        appStatus = 'quote_sent';
+        // Assign to quotes pipeline column based on days since quote was sent
+        if (daysSinceQuoteSent !== null && daysSinceQuoteSent <= 3) {
+          appStatus = 'fresh';  // Fresh (0-3 Days)
+        } else {
+          appStatus = 'awaiting_reply';  // Default for older quotes
+        }
       } else {
         // No quote sent yet - this is a new lead
         appStatus = 'new_lead';

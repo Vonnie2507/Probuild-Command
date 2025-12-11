@@ -213,11 +213,13 @@ export default function CommandCenter() {
   });
 
   // Quote phase jobs for Sales section (orange cards)
-  // Include: new_lead (no quote sent yet) and quote_sent (quote has been sent)
+  // Include: new_lead (no quote sent), fresh (0-3 days), awaiting_reply (4+ days)
+  // Also include any quotes pipeline status for flexibility
   // Exclude: unsuccessful, complete (terminal statuses)
   const quoteJobs = filteredJobs.filter(job => 
     job.lifecyclePhase === 'quote' && 
-    (job.status === 'quote_sent' || job.status === 'new_lead')
+    job.status !== 'unsuccessful' && 
+    job.status !== 'complete'
   );
   
   // Work order phase jobs for Scheduler/Production (blue cards)
