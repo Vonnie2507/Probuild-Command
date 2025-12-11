@@ -18,9 +18,10 @@ export interface Job {
   dueDate?: Date;
   purchaseOrderStatus: "none" | "ordered" | "received" | "delayed";
   productionTasks: { id: string; name: string; completed: boolean; assignedTo?: string }[];
-  installDate?: Date;
-  installTeam?: string;
-  readyForInstall: boolean;
+  installStage: 'pending_posts' | 'posts_scheduled' | 'measuring' | 'manufacturing_panels' | 'pending_panels' | 'panels_scheduled' | 'completed';
+  postInstallDate?: Date;
+  panelInstallDate?: Date;
+  estimatedProductionDuration: number; // days
 }
 
 export type StaffMember = {
@@ -99,6 +100,32 @@ const generateJobs = (): Job[] => {
     const quoteSentDays = isQuotePhase ? Math.floor(Math.random() * 20) : undefined;
     const isProduction = PIPELINES.production.some(c => c.id === status);
     
+    // Determine install stage based on status
+    let installStage: Job['installStage'] = 'pending_posts';
+    let postDate = undefined;
+    let panelDate = undefined;
+
+    if (isProduction) {
+       const r = Math.random();
+       if (r > 0.8) {
+         installStage = 'completed';
+         postDate = subDays(new Date(), 20);
+         panelDate = subDays(new Date(), 5);
+       } else if (r > 0.6) {
+         installStage = 'panels_scheduled';
+         postDate = subDays(new Date(), 15);
+         panelDate = addDays(new Date(), 5);
+       } else if (r > 0.4) {
+         installStage = 'pending_panels';
+         postDate = subDays(new Date(), 10);
+       } else if (r > 0.3) {
+         installStage = 'posts_scheduled';
+         postDate = addDays(new Date(), 3);
+       } else {
+         installStage = 'pending_posts';
+       }
+    }
+
     jobs.push({
       id: `job-${i}`,
       jobId: `#${1000 + i}`,
@@ -121,8 +148,10 @@ const generateJobs = (): Job[] => {
         { id: "t2", name: "Route Rails", completed: Math.random() > 0.5 },
         { id: "t3", name: "Pack Accessories", completed: false }
       ],
-      readyForInstall: isProduction && Math.random() > 0.6,
-      installDate: isProduction && Math.random() > 0.6 ? addDays(new Date(), Math.floor(Math.random() * 20)) : undefined,
+      installStage: installStage,
+      postInstallDate: postDate,
+      panelInstallDate: panelDate,
+      estimatedProductionDuration: Math.floor(Math.random() * 10) + 5,
     });
   }
 
