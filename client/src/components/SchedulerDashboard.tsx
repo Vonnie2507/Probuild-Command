@@ -403,7 +403,9 @@ export function SchedulerDashboard({
                             ref={provided.innerRef}
                             {...provided.droppableProps}
                           >
-                            {columnJobs.map((job, index) => (
+                            {columnJobs.map((job, index) => {
+                              const isComplete = job.status === 'complete';
+                              return (
                               <Draggable key={job.id} draggableId={`kanban-${job.id}`} index={index}>
                                 {(provided, snapshot) => (
                                   <div
@@ -413,12 +415,12 @@ export function SchedulerDashboard({
                                     data-testid={`kanban-job-${job.id}`}
                                     className={cn(
                                       "bg-white border-l-4 border rounded p-2 text-xs shadow-sm hover:shadow-md transition-shadow cursor-grab",
-                                      column.id === 'recently_completed' ? "border-l-green-500 bg-green-50/50" : "border-l-blue-500",
-                                      snapshot.isDragging && (column.id === 'recently_completed' ? "shadow-lg ring-2 ring-green-400" : "shadow-lg ring-2 ring-blue-400")
+                                      isComplete ? "border-l-green-500 bg-green-50/50" : "border-l-blue-500",
+                                      snapshot.isDragging && (isComplete ? "shadow-lg ring-2 ring-green-400" : "shadow-lg ring-2 ring-blue-400")
                                     )}
                                   >
                                     <div className="flex items-center gap-2 mb-1">
-                                      <span className={cn("font-bold", column.id === 'recently_completed' ? "text-green-700" : "text-blue-700")}>{job.jobId}</span>
+                                      <span className={cn("font-bold", isComplete ? "text-green-700" : "text-blue-700")}>{job.jobId}</span>
                                       <span className="text-muted-foreground ml-auto">${job.quoteValue.toLocaleString()}</span>
                                     </div>
                                     <div className="font-medium truncate mb-1">{job.customerName}</div>
@@ -429,7 +431,8 @@ export function SchedulerDashboard({
                                   </div>
                                 )}
                               </Draggable>
-                            ))}
+                              );
+                            })}
                             {provided.placeholder}
                             {columnJobs.length === 0 && (
                               <div className="text-center text-xs text-muted-foreground py-8">
