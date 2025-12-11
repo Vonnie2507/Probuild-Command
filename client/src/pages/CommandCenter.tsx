@@ -6,8 +6,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Plus, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 export default function CommandCenter() {
+  const [viewMode, setViewMode] = useState<"sales" | "production">("sales");
   const [jobs, setJobs] = useState<Job[]>(MOCK_JOBS);
   const [selectedStaff, setSelectedStaff] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -33,13 +35,42 @@ export default function CommandCenter() {
     <div className="flex flex-col h-screen bg-background overflow-hidden">
       {/* Header */}
       <header className="h-16 border-b flex items-center justify-between px-6 bg-card shrink-0 z-20 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 bg-primary rounded flex items-center justify-center">
-            <span className="font-heading font-bold text-primary-foreground text-lg">P</span>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 bg-primary rounded flex items-center justify-center">
+              <span className="font-heading font-bold text-primary-foreground text-lg">P</span>
+            </div>
+            <div>
+              <h1 className="font-heading text-xl leading-none">PROBUILD</h1>
+              <p className="text-[10px] text-muted-foreground font-mono tracking-widest uppercase">Command Center</p>
+            </div>
           </div>
-          <div>
-            <h1 className="font-heading text-xl leading-none">PROBUILD</h1>
-            <p className="text-[10px] text-muted-foreground font-mono tracking-widest uppercase">Command Center</p>
+
+          <div className="h-8 w-px bg-border mx-2" />
+
+          <div className="flex bg-muted p-1 rounded-md">
+            <button
+              onClick={() => setViewMode("sales")}
+              className={cn(
+                "px-4 py-1.5 text-xs font-bold uppercase tracking-wide rounded-sm transition-all",
+                viewMode === "sales" 
+                  ? "bg-white text-primary shadow-sm" 
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Sales & Quotes
+            </button>
+            <button
+              onClick={() => setViewMode("production")}
+              className={cn(
+                "px-4 py-1.5 text-xs font-bold uppercase tracking-wide rounded-sm transition-all",
+                viewMode === "production" 
+                  ? "bg-white text-primary shadow-sm" 
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Production
+            </button>
           </div>
         </div>
 
@@ -79,44 +110,61 @@ export default function CommandCenter() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden p-6 pt-4">
-        <Tabs defaultValue="leads" className="h-full flex flex-col">
-          <div className="flex items-center justify-between mb-4 shrink-0">
-            <TabsList className="h-10 bg-muted/50 p-1">
-              <TabsTrigger value="leads" className="px-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">LEADS PIPELINE</TabsTrigger>
-              <TabsTrigger value="quotes" className="px-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">QUOTES PIPELINE</TabsTrigger>
-              <TabsTrigger value="production" className="px-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">PRODUCTION PIPELINE</TabsTrigger>
-            </TabsList>
-            
-            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Sync ServiceM8
-            </Button>
-          </div>
+        {viewMode === "sales" ? (
+          <Tabs defaultValue="leads" className="h-full flex flex-col">
+            <div className="flex items-center justify-between mb-4 shrink-0">
+              <TabsList className="h-10 bg-muted/50 p-1">
+                <TabsTrigger value="leads" className="px-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">LEADS PIPELINE</TabsTrigger>
+                <TabsTrigger value="quotes" className="px-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">QUOTES PIPELINE</TabsTrigger>
+              </TabsList>
+              
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Sync ServiceM8
+              </Button>
+            </div>
 
-          <TabsContent value="leads" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
-             <PipelineBoard 
-                columns={PIPELINES.leads} 
-                jobs={filteredJobs} 
-                onJobMove={handleJobMove} 
-             />
-          </TabsContent>
-          
-          <TabsContent value="quotes" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
-            <PipelineBoard 
-                columns={PIPELINES.quotes} 
-                jobs={filteredJobs} 
-                onJobMove={handleJobMove} 
-             />
-          </TabsContent>
-          
-          <TabsContent value="production" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
-            <PipelineBoard 
-                columns={PIPELINES.production} 
-                jobs={filteredJobs} 
-                onJobMove={handleJobMove} 
-             />
-          </TabsContent>
-        </Tabs>
+            <TabsContent value="leads" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
+               <PipelineBoard 
+                  columns={PIPELINES.leads} 
+                  jobs={filteredJobs} 
+                  onJobMove={handleJobMove} 
+               />
+            </TabsContent>
+            
+            <TabsContent value="quotes" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
+              <PipelineBoard 
+                  columns={PIPELINES.quotes} 
+                  jobs={filteredJobs} 
+                  onJobMove={handleJobMove} 
+               />
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <div className="h-full flex flex-col">
+            <div className="flex items-center justify-between mb-4 shrink-0">
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-heading text-foreground">Production Schedule</h2>
+                <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-bold">
+                  {filteredJobs.filter(j => PIPELINES.production.some(p => p.id === j.status)).length} Active Jobs
+                </span>
+              </div>
+              
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Sync ServiceM8
+              </Button>
+            </div>
+            
+            <div className="flex-1 overflow-hidden">
+              <PipelineBoard 
+                  columns={PIPELINES.production} 
+                  jobs={filteredJobs} 
+                  onJobMove={handleJobMove} 
+               />
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
