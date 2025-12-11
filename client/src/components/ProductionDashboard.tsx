@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Job, PIPELINES, STAFF_MEMBERS } from "@/lib/mockData";
 import { PipelineBoard } from "@/components/PipelineBoard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,29 +16,136 @@ interface ProductionDashboardProps {
   onJobMove: (jobId: string, newStatus: string) => void;
 }
 
+interface TimerState {
+  jobId: string;
+  isRunning: boolean;
+  startedAt: Date | null;
+  totalSeconds: number;
+}
+
+function formatTime(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
 export function ProductionDashboard({ jobs, onJobMove }: ProductionDashboardProps) {
-  const [activeTimer, setActiveTimer] = useState<string | null>(null);
+  const [timers, setTimers] = useState<Record<string, TimerState>>({});
+  const [tick, setTick] = useState(0);
 
   const productionJobs = jobs.filter(j => 
     (j.lifecyclePhase === 'work_order' || j.status === 'work_order' || j.status === 'deposit_paid') &&
     j.status !== 'complete'
   );
 
-  const toggleTimer = (jobId: string) => {
-    if (activeTimer === jobId) {
-      setActiveTimer(null);
-    } else {
-      setActiveTimer(jobId);
+  // Update tick every second to refresh running timers
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick(t => t + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Load timer states from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('production_timers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Convert startedAt strings back to Date objects
+        const restored: Record<string, TimerState> = {};
+        for (const [jobId, timer] of Object.entries(parsed as Record<string, any>)) {
+          restored[jobId] = {
+            ...timer,
+            startedAt: timer.startedAt ? new Date(timer.startedAt) : null
+          };
+        }
+        setTimers(restored);
+      }
+    } catch (e) {
+      console.error("Failed to load timers:", e);
     }
+  }, []);
+
+  // Save timer states to localStorage when they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('production_timers', JSON.stringify(timers));
+    } catch (e) {
+      console.error("Failed to save timers:", e);
+    }
+  }, [timers]);
+
+  const getElapsedSeconds = useCallback((timer: TimerState): number => {
+    let elapsed = timer.totalSeconds;
+    if (timer.isRunning && timer.startedAt) {
+      const now = new Date();
+      elapsed += Math.floor((now.getTime() - timer.startedAt.getTime()) / 1000);
+    }
+    return elapsed;
+  }, []);
+
+  const toggleTimer = async (jobId: string, dbJobId: number) => {
+    const currentTimer = timers[jobId];
+    
+    if (currentTimer?.isRunning) {
+      // Stop the timer
+      const elapsed = getElapsedSeconds(currentTimer);
+      setTimers(prev => ({
+        ...prev,
+        [jobId]: {
+          jobId,
+          isRunning: false,
+          startedAt: null,
+          totalSeconds: elapsed
+        }
+      }));
+      
+      // Try to save to backend (for a generic job timer, use stageId = 0)
+      try {
+        await fetch(`/api/jobs/${dbJobId}/stages/0/timer/stop`, { method: 'POST' });
+      } catch (e) {
+        console.error("Failed to save timer to backend:", e);
+      }
+    } else {
+      // Start the timer
+      setTimers(prev => ({
+        ...prev,
+        [jobId]: {
+          jobId,
+          isRunning: true,
+          startedAt: new Date(),
+          totalSeconds: currentTimer?.totalSeconds || 0
+        }
+      }));
+      
+      // Try to save to backend
+      try {
+        await fetch(`/api/jobs/${dbJobId}/stages/0/timer/start`, { method: 'POST' });
+      } catch (e) {
+        console.error("Failed to save timer to backend:", e);
+      }
+    }
+  };
+
+  const getTimerDisplay = (jobId: string): string => {
+    const timer = timers[jobId];
+    if (!timer) return "00:00:00";
+    return formatTime(getElapsedSeconds(timer));
+  };
+
+  const isTimerRunning = (jobId: string): boolean => {
+    return timers[jobId]?.isRunning || false;
   };
 
   return (
     <Tabs defaultValue="tasks" className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-4 shrink-0">
         <TabsList className="bg-muted/50">
-          <TabsTrigger value="tasks">Active Tasks</TabsTrigger>
-          <TabsTrigger value="pipeline">Pipeline Board</TabsTrigger>
-          <TabsTrigger value="materials">Materials & POs</TabsTrigger>
+          <TabsTrigger value="tasks" data-testid="tab-tasks">Active Tasks</TabsTrigger>
+          <TabsTrigger value="pipeline" data-testid="tab-pipeline">Pipeline Board</TabsTrigger>
+          <TabsTrigger value="materials" data-testid="tab-materials">Materials & POs</TabsTrigger>
         </TabsList>
       </div>
 
@@ -53,15 +160,15 @@ export function ProductionDashboard({ jobs, onJobMove }: ProductionDashboardProp
       <TabsContent value="tasks" className="flex-1 overflow-y-auto mt-0 pr-2">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {productionJobs.map(job => (
-            <Card key={job.id} className={cn("flex flex-col", activeTimer === job.id && "border-primary ring-1 ring-primary")}>
+            <Card key={job.id} className={cn("flex flex-col", isTimerRunning(job.id) && "border-primary ring-1 ring-primary")}>
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-start">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono text-xs font-bold bg-muted px-1.5 py-0.5 rounded">{job.jobId}</span>
+                      <span className="font-mono text-xs font-bold bg-muted px-1.5 py-0.5 rounded" data-testid={`job-id-${job.id}`}>{job.jobId}</span>
                       {job.urgency === 'critical' && <Badge variant="destructive" className="h-5 text-[10px]">URGENT</Badge>}
                     </div>
-                    <CardTitle className="text-base leading-tight">{job.customerName}</CardTitle>
+                    <CardTitle className="text-base leading-tight" data-testid={`customer-name-${job.id}`}>{job.customerName}</CardTitle>
                     <p className="text-xs text-muted-foreground mt-1">{job.address}</p>
                   </div>
                   {job.dueDate && (
@@ -79,22 +186,26 @@ export function ProductionDashboard({ jobs, onJobMove }: ProductionDashboardProp
                     <span>Task Checklist</span>
                     <span>{job.productionTasks.filter(t => t.completed).length}/{job.productionTasks.length}</span>
                   </div>
-                  {job.productionTasks.map(task => (
-                    <div key={task.id} className="flex items-center gap-2">
-                      <div className={cn(
-                        "h-4 w-4 rounded border flex items-center justify-center cursor-pointer transition-colors",
-                        task.completed ? "bg-primary border-primary text-primary-foreground" : "bg-background border-input hover:border-primary"
-                      )}>
-                        {task.completed && <CheckSquare className="h-3 w-3" />}
+                  {job.productionTasks.length === 0 ? (
+                    <div className="text-xs text-muted-foreground italic py-2">No tasks assigned</div>
+                  ) : (
+                    job.productionTasks.map(task => (
+                      <div key={task.id} className="flex items-center gap-2">
+                        <div className={cn(
+                          "h-4 w-4 rounded border flex items-center justify-center cursor-pointer transition-colors",
+                          task.completed ? "bg-primary border-primary text-primary-foreground" : "bg-background border-input hover:border-primary"
+                        )}>
+                          {task.completed && <CheckSquare className="h-3 w-3" />}
+                        </div>
+                        <span className={cn("text-xs flex-1", task.completed && "text-muted-foreground line-through")}>
+                          {task.name}
+                        </span>
+                        <Avatar className="h-5 w-5">
+                          <AvatarFallback className="text-[9px] bg-indigo-100 text-indigo-700">CW</AvatarFallback>
+                        </Avatar>
                       </div>
-                      <span className={cn("text-xs flex-1", task.completed && "text-muted-foreground line-through")}>
-                        {task.name}
-                      </span>
-                      <Avatar className="h-5 w-5">
-                        <AvatarFallback className="text-[9px] bg-indigo-100 text-indigo-700">CW</AvatarFallback>
-                      </Avatar>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
 
                 {/* Assignment & Time Tracking */}
@@ -114,22 +225,23 @@ export function ProductionDashboard({ jobs, onJobMove }: ProductionDashboardProp
                   
                   <Button 
                     size="sm" 
-                    variant={activeTimer === job.id ? "default" : "outline"}
+                    variant={isTimerRunning(job.id) ? "default" : "outline"}
                     className={cn(
                       "h-8 gap-2 transition-all",
-                      activeTimer === job.id ? "bg-amber-500 hover:bg-amber-600 border-amber-500" : ""
+                      isTimerRunning(job.id) ? "bg-amber-500 hover:bg-amber-600 border-amber-500" : ""
                     )}
-                    onClick={() => toggleTimer(job.id)}
+                    onClick={() => toggleTimer(job.id, typeof job.id === 'string' ? parseInt(job.id) || 0 : job.id)}
+                    data-testid={`timer-button-${job.id}`}
                   >
-                    {activeTimer === job.id ? (
+                    {isTimerRunning(job.id) ? (
                       <>
                         <Pause className="h-3.5 w-3.5 fill-current" />
-                        <span className="font-mono">00:42:15</span>
+                        <span className="font-mono" data-testid={`timer-display-${job.id}`}>{getTimerDisplay(job.id)}</span>
                       </>
                     ) : (
                       <>
                         <Play className="h-3.5 w-3.5 fill-current" />
-                        <span>Start</span>
+                        <span>{timers[job.id]?.totalSeconds ? formatTime(timers[job.id].totalSeconds) : "Start"}</span>
                       </>
                     )}
                   </Button>
