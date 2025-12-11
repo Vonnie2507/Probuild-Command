@@ -9,10 +9,11 @@ import { z } from "zod";
 const SM8_OAUTH_CONFIG = {
   authorizeUrl: "https://go.servicem8.com/oauth/authorize",
   tokenUrl: "https://go.servicem8.com/oauth/access_token",
-  clientId: process.env.SERVICEM8_CLIENT_ID || "",
-  clientSecret: process.env.SERVICEM8_CLIENT_SECRET || "",
+  clientId: process.env.SERVICEM8_APP_ID || process.env.SERVICEM8_CLIENT_ID || "",
+  clientSecret: process.env.SERVICEM8_APP_SECRET || process.env.SERVICEM8_CLIENT_SECRET || "",
   scopes: "read_jobs read_schedule manage_schedule read_job_notes read_staff read_customers",
 };
+
 
 // Helper function to get a valid OAuth token, refreshing if needed
 async function getValidOAuthToken(): Promise<{ accessToken: string } | null> {
@@ -468,6 +469,18 @@ export async function registerRoutes(
       console.error("OAuth callback error:", error);
       res.redirect("/?oauth_error=callback_failed");
     }
+  });
+
+  // Debug endpoint to check OAuth config (runtime values)
+  app.get("/api/debug/oauth-config", (req, res) => {
+    res.json({
+      clientIdPresent: !!SM8_OAUTH_CONFIG.clientId,
+      clientIdLength: SM8_OAUTH_CONFIG.clientId?.length || 0,
+      appIdEnv: !!process.env.SERVICEM8_APP_ID,
+      clientIdEnv: !!process.env.SERVICEM8_CLIENT_ID,
+      appSecretEnv: !!process.env.SERVICEM8_APP_SECRET,
+      clientSecretEnv: !!process.env.SERVICEM8_CLIENT_SECRET,
+    });
   });
 
   // Fetch Job Activity/Diary using OAuth token
