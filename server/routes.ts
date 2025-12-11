@@ -14,6 +14,56 @@ const SM8_OAUTH_CONFIG = {
   scopes: "read_jobs read_schedule manage_schedule read_messages read_job_notes read_staff read_clients",
 };
 
+// Helper function to get a valid OAuth token, refreshing if needed
+async function getValidOAuthToken(): Promise<{ accessToken: string } | null> {
+  const token = await storage.getOAuthToken("servicem8");
+  if (!token) return null;
+  
+  const isExpired = token.expiresAt && new Date(token.expiresAt) < new Date();
+  
+  if (isExpired && token.refreshToken) {
+    console.log("OAuth token expired, attempting refresh...");
+    try {
+      const refreshResponse = await fetch(SM8_OAUTH_CONFIG.tokenUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: token.refreshToken,
+          client_id: SM8_OAUTH_CONFIG.clientId,
+          client_secret: SM8_OAUTH_CONFIG.clientSecret,
+        }),
+      });
+      
+      if (refreshResponse.ok) {
+        const newTokenData = await refreshResponse.json();
+        const expiresAt = newTokenData.expires_in 
+          ? new Date(Date.now() + newTokenData.expires_in * 1000)
+          : null;
+        
+        await storage.saveOAuthToken({
+          provider: "servicem8",
+          accessToken: newTokenData.access_token,
+          refreshToken: newTokenData.refresh_token || token.refreshToken,
+          expiresAt: expiresAt,
+          scope: SM8_OAUTH_CONFIG.scopes,
+        });
+        
+        console.log("OAuth token refreshed successfully");
+        return { accessToken: newTokenData.access_token };
+      } else {
+        console.error("Token refresh failed:", await refreshResponse.text());
+        return null;
+      }
+    } catch (error) {
+      console.error("Error refreshing token:", error);
+      return null;
+    }
+  }
+  
+  return isExpired ? null : { accessToken: token.accessToken };
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -371,12 +421,12 @@ export async function registerRoutes(
     }
   });
 
-  // Fetch Job Notes using OAuth token
+  // Fetch Job Notes using OAuth token (with auto-refresh)
   app.get("/api/servicem8/job-notes/:jobUuid", async (req, res) => {
     try {
-      const token = await storage.getOAuthToken("servicem8");
+      const token = await getValidOAuthToken();
       if (!token) {
-        return res.status(401).json({ error: "Not connected to ServiceM8 OAuth. Please connect first." });
+        return res.status(401).json({ error: "ServiceM8 token expired or not connected. Please reconnect via Settings." });
       }
 
       const { jobUuid } = req.params;
@@ -393,6 +443,9 @@ export async function registerRoutes(
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Notes API error:", response.status, errorText);
+        if (response.status === 401) {
+          return res.status(401).json({ error: "ServiceM8 token expired. Please reconnect via Settings." });
+        }
         throw new Error(`API Error: ${response.status}`);
       }
 

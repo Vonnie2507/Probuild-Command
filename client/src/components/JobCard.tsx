@@ -30,12 +30,20 @@ export function JobCard({ job, index }: JobCardProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [notes, setNotes] = useState<ServiceM8Note[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
   
   useEffect(() => {
     if (detailsOpen && job.serviceM8Uuid) {
       setLoadingNotes(true);
+      setNotesError(null);
       fetch(`/api/servicem8/job-notes/${job.serviceM8Uuid}`)
-        .then(res => res.json())
+        .then(async res => {
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || `Error ${res.status}`);
+          }
+          return res.json();
+        })
         .then(data => {
           if (Array.isArray(data)) {
             const sorted = data.sort((a: ServiceM8Note, b: ServiceM8Note) => 
@@ -44,7 +52,10 @@ export function JobCard({ job, index }: JobCardProps) {
             setNotes(sorted);
           }
         })
-        .catch(err => console.error("Failed to fetch notes:", err))
+        .catch(err => {
+          console.error("Failed to fetch notes:", err);
+          setNotesError(err.message || "Failed to load notes");
+        })
         .finally(() => setLoadingNotes(false));
     }
   }, [detailsOpen, job.serviceM8Uuid]);
@@ -342,6 +353,12 @@ export function JobCard({ job, index }: JobCardProps) {
                 <div className="flex items-center justify-center h-full text-muted-foreground">
                   <Loader2 className="h-5 w-5 animate-spin mr-2" />
                   Loading communication history...
+                </div>
+              ) : notesError ? (
+                <div className="flex flex-col items-center justify-center h-full text-center py-4">
+                  <AlertCircle className="h-5 w-5 text-amber-500 mb-2" />
+                  <p className="text-sm text-amber-600 font-medium">{notesError}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Please reconnect to ServiceM8 in Settings</p>
                 </div>
               ) : notes.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">No communication history found</p>
