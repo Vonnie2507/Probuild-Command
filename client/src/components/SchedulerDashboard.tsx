@@ -3,23 +3,30 @@ import { Job, PIPELINES, getDailyInstallCapacity, STAFF_MEMBERS } from "@/lib/mo
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar as CalendarIcon, MapPin, Truck, Factory, Users, Clock, User, Info } from "lucide-react";
+import { Calendar as CalendarIcon, MapPin, Truck, Factory, Users, Clock, User, Info, X, Check } from "lucide-react";
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 
 interface SchedulerDashboardProps {
   jobs: Job[];
   onJobMove: (jobId: string, newStatus: string) => void;
+  onScheduleJob?: (jobId: string, type: 'posts' | 'panels', date: Date) => void;
 }
 
-export function SchedulerDashboard({ jobs }: SchedulerDashboardProps) {
+export function SchedulerDashboard({ jobs, onScheduleJob }: SchedulerDashboardProps) {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [scheduleModal, setScheduleModal] = useState<{
+    open: boolean;
+    job: Job | null;
+    type: 'posts' | 'panels';
+  }>({ open: false, job: null, type: 'posts' });
   
   // Capacity Logic
-  const dailyTotalHours = getDailyInstallCapacity(); // e.g., 32 hours (4 guys * 8 hours)
-  const availableTeams = 2; // Team A, Team B
+  const dailyTotalHours = getDailyInstallCapacity();
+  const availableTeams = 2;
 
   // Mock Production Capacity (Next 6 Weeks)
   const productionCapacity = [
@@ -40,9 +47,129 @@ export function SchedulerDashboard({ jobs }: SchedulerDashboardProps) {
   const endDate = endOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: startDate, end: endDate });
 
+  // Get next 4 weeks of available dates for scheduling modal
+  const getSchedulableDates = () => {
+    const dates: Date[] = [];
+    for (let i = 0; i < 28; i++) {
+      const date = addDays(new Date(), i);
+      if (date.getDay() !== 0 && date.getDay() !== 6) {
+        dates.push(date);
+      }
+    }
+    return dates;
+  };
+
+  const handleJobClick = (job: Job, type: 'posts' | 'panels') => {
+    setScheduleModal({ open: true, job, type });
+  };
+
+  const handleSchedule = (date: Date) => {
+    if (scheduleModal.job && onScheduleJob) {
+      onScheduleJob(scheduleModal.job.id, scheduleModal.type, date);
+    }
+    setScheduleModal({ open: false, job: null, type: 'posts' });
+  };
+
+  const schedulableDates = getSchedulableDates();
+
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
       
+      {/* Schedule Modal */}
+      <Dialog open={scheduleModal.open} onOpenChange={(open) => setScheduleModal({ ...scheduleModal, open })}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarIcon className="h-5 w-5" />
+              Schedule {scheduleModal.type === 'posts' ? 'Post Installation' : 'Panel Installation'}
+            </DialogTitle>
+            <DialogDescription>
+              {scheduleModal.job && (
+                <span className="font-medium">{scheduleModal.job.jobId} - {scheduleModal.job.customerName}</span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {scheduleModal.job && (
+            <div className="space-y-4">
+              <div className="bg-muted/30 border rounded p-3 text-sm">
+                <div className="flex items-center gap-4 mb-2">
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">
+                      {scheduleModal.type === 'posts' 
+                        ? scheduleModal.job.postInstallDuration 
+                        : scheduleModal.job.panelInstallDuration}h
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">
+                      {scheduleModal.type === 'posts' 
+                        ? scheduleModal.job.postInstallCrewSize 
+                        : scheduleModal.job.panelInstallCrewSize} Staff
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <MapPin className="h-3 w-3" />
+                  {scheduleModal.job.address}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-medium mb-2 text-sm">Select Installation Date</h4>
+                <div className="grid grid-cols-5 gap-2 max-h-64 overflow-y-auto">
+                  {schedulableDates.map(date => {
+                    const postJobs = jobs.filter(j => j.postInstallDate && isSameDay(j.postInstallDate, date));
+                    const panelJobs = jobs.filter(j => j.panelInstallDate && isSameDay(j.panelInstallDate, date));
+                    const totalBookedHours = 
+                      postJobs.reduce((sum, j) => sum + j.postInstallDuration, 0) + 
+                      panelJobs.reduce((sum, j) => sum + j.panelInstallDuration, 0);
+                    const capacityPercent = Math.round((totalBookedHours / dailyTotalHours) * 100);
+                    const isOverCapacity = totalBookedHours > dailyTotalHours;
+                    const jobDuration = scheduleModal.type === 'posts' 
+                      ? scheduleModal.job!.postInstallDuration 
+                      : scheduleModal.job!.panelInstallDuration;
+                    const wouldOverbook = (totalBookedHours + jobDuration) > dailyTotalHours;
+
+                    return (
+                      <button
+                        key={date.toString()}
+                        onClick={() => handleSchedule(date)}
+                        data-testid={`schedule-date-${format(date, 'yyyy-MM-dd')}`}
+                        className={cn(
+                          "p-2 border rounded text-center hover:border-primary hover:bg-primary/5 transition-colors",
+                          isOverCapacity && "border-red-300 bg-red-50",
+                          wouldOverbook && !isOverCapacity && "border-orange-300 bg-orange-50",
+                          isSameDay(date, new Date()) && "ring-2 ring-primary"
+                        )}
+                      >
+                        <div className="font-medium text-sm">{format(date, "EEE")}</div>
+                        <div className="text-lg font-bold">{format(date, "d")}</div>
+                        <div className="text-[10px] text-muted-foreground">{format(date, "MMM")}</div>
+                        <div className={cn(
+                          "mt-1 text-[9px] font-mono",
+                          isOverCapacity ? "text-red-600 font-bold" : capacityPercent > 80 ? "text-orange-600" : "text-green-600"
+                        )}>
+                          {totalBookedHours}/{dailyTotalHours}h
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleModal({ open: false, job: null, type: 'posts' })}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 1. Production Capabilities Timeline */}
       <div className="shrink-0 bg-card border rounded-lg p-3 shadow-sm grid grid-cols-[300px_1fr] gap-6">
         {/* Left: Staff Capacity Summary */}
@@ -115,7 +242,12 @@ export function SchedulerDashboard({ jobs }: SchedulerDashboardProps) {
             </CardHeader>
             <CardContent className="p-3 space-y-2">
               {pendingPostInstall.map(job => (
-                <div key={job.id} className="bg-muted/30 border rounded p-2 text-xs hover:bg-muted transition-colors cursor-grab active:cursor-grabbing group">
+                <div 
+                  key={job.id} 
+                  onClick={() => handleJobClick(job, 'posts')}
+                  data-testid={`schedule-posts-${job.id}`}
+                  className="bg-muted/30 border rounded p-2 text-xs hover:bg-blue-50 hover:border-blue-300 transition-colors cursor-pointer group"
+                >
                   <div className="font-bold flex justify-between mb-1">
                     <span>{job.jobId}</span>
                     <span className="text-muted-foreground font-normal">{job.estimatedProductionDuration}d prod</span>
@@ -133,6 +265,10 @@ export function SchedulerDashboard({ jobs }: SchedulerDashboardProps) {
 
                   <div className="text-muted-foreground flex items-center gap-1 mt-1 truncate">
                     <MapPin className="h-3 w-3" /> {job.address.split(',')[0]}
+                  </div>
+                  
+                  <div className="mt-2 text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[10px] text-blue-600 font-medium">Click to Schedule →</span>
                   </div>
                 </div>
               ))}
@@ -153,7 +289,12 @@ export function SchedulerDashboard({ jobs }: SchedulerDashboardProps) {
             </CardHeader>
             <CardContent className="p-3 space-y-2">
                {pendingPanelInstall.map(job => (
-                <div key={job.id} className="bg-muted/30 border rounded p-2 text-xs hover:bg-muted transition-colors cursor-grab active:cursor-grabbing">
+                <div 
+                  key={job.id} 
+                  onClick={() => handleJobClick(job, 'panels')}
+                  data-testid={`schedule-panels-${job.id}`}
+                  className="bg-muted/30 border rounded p-2 text-xs hover:bg-purple-50 hover:border-purple-300 transition-colors cursor-pointer group"
+                >
                   <div className="font-bold flex justify-between mb-1">
                     <span>{job.jobId}</span>
                     <Badge variant="outline" className="h-4 px-1 text-[9px] border-green-200 text-green-700 bg-green-50">Posts In</Badge>
@@ -172,6 +313,10 @@ export function SchedulerDashboard({ jobs }: SchedulerDashboardProps) {
                   <div className="text-muted-foreground flex items-center gap-1 mt-1 truncate">
                     <MapPin className="h-3 w-3" /> {job.address.split(',')[0]}
                   </div>
+                  
+                  <div className="mt-2 text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[10px] text-purple-600 font-medium">Click to Schedule →</span>
+                  </div>
                 </div>
               ))}
               {pendingPanelInstall.length === 0 && <div className="text-center text-xs text-muted-foreground py-4">No panels ready for install</div>}
@@ -187,11 +332,11 @@ export function SchedulerDashboard({ jobs }: SchedulerDashboardProps) {
               <h3 className="font-heading font-semibold text-lg">Installation Schedule</h3>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setSelectedDate(addDays(selectedDate, -7))}>Prev Week</Button>
+              <Button variant="outline" size="sm" onClick={() => setSelectedDate(addDays(selectedDate, -7))} data-testid="prev-week-btn">Prev Week</Button>
               <span className="font-mono font-medium text-sm w-32 text-center">
                 {format(startDate, "MMM d")} - {format(endDate, "MMM d")}
               </span>
-              <Button variant="outline" size="sm" onClick={() => setSelectedDate(addDays(selectedDate, 7))}>Next Week</Button>
+              <Button variant="outline" size="sm" onClick={() => setSelectedDate(addDays(selectedDate, 7))} data-testid="next-week-btn">Next Week</Button>
             </div>
           </div>
 
@@ -255,10 +400,12 @@ export function SchedulerDashboard({ jobs }: SchedulerDashboardProps) {
                       </div>
                     ))}
                     
-                    {/* Empty Slots */}
-                    <div className="border border-dashed border-border rounded p-2 flex items-center justify-center text-muted-foreground opacity-50 hover:opacity-100 hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-all">
-                      <span className="text-[10px]">+ Add Slot</span>
-                    </div>
+                    {/* Empty state */}
+                    {postJobs.length === 0 && panelJobs.length === 0 && (
+                      <div className="border border-dashed border-border rounded p-2 flex items-center justify-center text-muted-foreground opacity-50">
+                        <span className="text-[10px]">No installs</span>
+                      </div>
+                    )}
 
                   </div>
                 </div>

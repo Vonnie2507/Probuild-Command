@@ -1,20 +1,24 @@
 import { useState } from "react";
-import { MOCK_JOBS, PIPELINES, STAFF_MEMBERS, Job } from "@/lib/mockData";
+import { MOCK_JOBS, PIPELINES, STAFF_MEMBERS, Job, StaffMember } from "@/lib/mockData";
 import { PipelineBoard } from "@/components/PipelineBoard";
 import { ProductionDashboard } from "@/components/ProductionDashboard";
 import { SchedulerDashboard } from "@/components/SchedulerDashboard";
+import { StaffManagement } from "@/components/StaffManagement";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Plus, Search } from "lucide-react";
+import { RefreshCw, Plus, Search, Settings, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export default function CommandCenter() {
   const [viewMode, setViewMode] = useState<"sales" | "production" | "scheduler">("sales");
   const [jobs, setJobs] = useState<Job[]>(MOCK_JOBS);
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>(STAFF_MEMBERS);
   const [selectedStaff, setSelectedStaff] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [staffDialogOpen, setStaffDialogOpen] = useState(false);
 
   const handleJobMove = (jobId: string, newStatus: string) => {
     setJobs((prev) =>
@@ -22,6 +26,42 @@ export default function CommandCenter() {
         job.id === jobId ? { ...job, status: newStatus } : job
       )
     );
+  };
+
+  const handleScheduleJob = (jobId: string, type: 'posts' | 'panels', date: Date) => {
+    setJobs((prev) =>
+      prev.map((job) => {
+        if (job.id !== jobId) return job;
+        
+        if (type === 'posts') {
+          return {
+            ...job,
+            postInstallDate: date,
+            installStage: 'posts_scheduled' as const,
+          };
+        } else {
+          return {
+            ...job,
+            panelInstallDate: date,
+            installStage: 'panels_scheduled' as const,
+          };
+        }
+      })
+    );
+  };
+
+  const handleUpdateStaff = (updatedStaff: StaffMember) => {
+    setStaffMembers((prev) =>
+      prev.map((s) => (s.id === updatedStaff.id ? updatedStaff : s))
+    );
+  };
+
+  const handleAddStaff = (newStaff: StaffMember) => {
+    setStaffMembers((prev) => [...prev, newStaff]);
+  };
+
+  const handleDeleteStaff = (staffId: string) => {
+    setStaffMembers((prev) => prev.filter((s) => s.id !== staffId));
   };
 
   const filteredJobs = jobs.filter((job) => {
@@ -114,6 +154,29 @@ export default function CommandCenter() {
             </Select>
           </div>
 
+          <Dialog open={staffDialogOpen} onOpenChange={setStaffDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" data-testid="manage-staff-btn">
+                <Users className="h-4 w-4 mr-2" />
+                Staff
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Staff Management
+                </DialogTitle>
+              </DialogHeader>
+              <StaffManagement 
+                staff={staffMembers}
+                onUpdateStaff={handleUpdateStaff}
+                onAddStaff={handleAddStaff}
+                onDeleteStaff={handleDeleteStaff}
+              />
+            </DialogContent>
+          </Dialog>
+
           <Button size="sm" className="bg-primary hover:bg-primary/90">
             <Plus className="h-4 w-4 mr-2" />
             New Job
@@ -160,7 +223,11 @@ export default function CommandCenter() {
         )}
 
         {viewMode === "scheduler" && (
-          <SchedulerDashboard jobs={filteredJobs} onJobMove={handleJobMove} />
+          <SchedulerDashboard 
+            jobs={filteredJobs} 
+            onJobMove={handleJobMove}
+            onScheduleJob={handleScheduleJob}
+          />
         )}
       </main>
     </div>
