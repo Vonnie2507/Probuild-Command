@@ -302,26 +302,39 @@ export class ServiceM8Client {
         console.log(`[Comms] Sample feed item:`, JSON.stringify(feedItems[0], null, 2).substring(0, 500));
       }
       
-      // Find SMS and Email sent items
+      // Find INCOMING SMS and Email from customers (not outgoing from staff)
       for (const item of feedItems) {
         if (!item.related_object_uuid || item.related_object !== 'job') continue;
         
         const jobUuid = item.related_object_uuid;
         const itemType = (item.type || '').toLowerCase();
+        const message = (item.message || item.description || '').toLowerCase();
         const timestamp = item.timestamp ? new Date(item.timestamp) : new Date();
         
-        // Only track actual sent emails and SMS
+        // Only track INCOMING/RECEIVED emails and SMS from customers
         let commType: string | null = null;
-        if (itemType === 'sms' || itemType === 'sms_sent' || itemType.includes('sms')) {
+        
+        // Check for received/incoming indicators
+        if (itemType === 'sms_received' || itemType === 'sms_inbound' || 
+            itemType.includes('sms') && (itemType.includes('received') || itemType.includes('inbound'))) {
           commType = 'sms';
-        } else if (itemType === 'email' || itemType === 'email_sent' || itemType.includes('email')) {
+        } else if (itemType === 'email_received' || itemType === 'email_inbound' ||
+            itemType.includes('email') && (itemType.includes('received') || itemType.includes('inbound'))) {
           commType = 'email';
         }
+        // Also check message content for "received" or "from customer" patterns
+        else if (message.includes('received') || message.includes('from customer') || message.includes('customer replied')) {
+          if (message.includes('sms') || message.includes('text')) {
+            commType = 'sms';
+          } else if (message.includes('email')) {
+            commType = 'email';
+          }
+        }
         
-        // Skip if not an email or SMS
+        // Skip if not an incoming email or SMS
         if (!commType) continue;
         
-        // Only keep the most recent email/SMS per job
+        // Only keep the most recent incoming message per job
         const existing = commMap.get(jobUuid);
         if (!existing || timestamp > existing.date) {
           commMap.set(jobUuid, {
@@ -359,15 +372,18 @@ export class ServiceM8Client {
         const noteText = (note.note || '').toLowerCase();
         const timestamp = note.timestamp ? new Date(note.timestamp) : new Date();
         
-        // ONLY track emails and SMS - skip regular notes
+        // ONLY track INCOMING emails and SMS from customers - not outgoing
         let commType: string | null = null;
-        if (noteText.includes('email sent') || noteText.includes('sent email') || noteText.includes('emailed')) {
+        if (noteText.includes('email received') || noteText.includes('received email') || 
+            noteText.includes('customer email') || noteText.includes('email from')) {
           commType = 'email';
-        } else if (noteText.includes('sms sent') || noteText.includes('sent sms') || noteText.includes('text sent')) {
+        } else if (noteText.includes('sms received') || noteText.includes('received sms') || 
+            noteText.includes('customer sms') || noteText.includes('sms from') ||
+            noteText.includes('text received') || noteText.includes('received text')) {
           commType = 'sms';
         }
         
-        // Skip if not an email or SMS
+        // Skip if not an incoming email or SMS
         if (!commType) continue;
         
         const existing = commMap.get(jobUuid);
@@ -488,7 +504,7 @@ export class ServiceM8Client {
     return staffValue || "Unassigned";
   }
 
-  mapServiceM8JobToInsertJob(sm8Job: ServiceM8Job, companyName?: string, customFieldMap?: Map<string, Record<string, string>>): InsertJob {
+  mapServiceM8JobToInsertJob(sm8Job: ServiceM8Job, companyName?: string, customFieldMap?: Map<string, Record<string, string>>, badgeDefinitions?: Map<string, string>): InsertJob {
     const address = sm8Job.job_address || sm8Job.billing_address || "No Address";
     const quoteValue = parseFloat(sm8Job.total_invoice_amount) || 0;
     
@@ -547,7 +563,8 @@ export class ServiceM8Client {
     
     if (lifecyclePhase === 'quote' && appStatus !== 'unsuccessful') {
       if (hasQuoteSent) {
-        schedulerStage = 'quotes_sent';
+        // Quote jobs don't need a scheduler stage - they're in sales pipelines
+        schedulerStage = null;
         // For Leads Pipeline: set status to quote_sent
         appStatus = 'quote_sent';
         // For Quotes Pipeline: set salesStage based on days since quote was sent
@@ -590,8 +607,36 @@ export class ServiceM8Client {
       panelInstallDuration: 8,
       panelInstallCrewSize: 2,
       syncedAt: new Date(),
-      badges: sm8Job.badges ? sm8Job.badges.split(',').map((b: string) => b.trim()).filter((b: string) => b.length > 0) : [],
+      badges: this.parseBadges(sm8Job.badges, badgeDefinitions),
     };
+  }
+
+  private parseBadges(badgesRaw: string | undefined, badgeDefinitions?: Map<string, string>): string[] {
+    if (!badgesRaw) return [];
+    
+    // ServiceM8 stores badges as JSON array string like '["uuid1","uuid2"]' or comma-separated
+    let badgeUuids: string[] = [];
+    
+    try {
+      // Try parsing as JSON array first
+      const parsed = JSON.parse(badgesRaw);
+      if (Array.isArray(parsed)) {
+        badgeUuids = parsed.map((b: string) => b.trim()).filter((b: string) => b.length > 0);
+      }
+    } catch {
+      // Fall back to comma-separated format
+      badgeUuids = badgesRaw.split(',').map((b: string) => b.trim()).filter((b: string) => b.length > 0);
+    }
+    
+    // Convert UUIDs to human-readable names if definitions available
+    if (badgeDefinitions && badgeDefinitions.size > 0) {
+      return badgeUuids.map(uuid => {
+        const name = badgeDefinitions.get(uuid);
+        return name || uuid; // Fall back to UUID if no name found
+      });
+    }
+    
+    return badgeUuids;
   }
 
   private mapServiceM8Status(sm8Status: string): { 

@@ -213,3 +213,19 @@ export const insertJobStageProgressSchema = createInsertSchema(jobStageProgress,
 
 export type InsertJobStageProgress = typeof jobStageProgress.$inferInsert;
 export type JobStageProgress = typeof jobStageProgress.$inferSelect;
+
+// App Settings Table - Stores global app configuration
+export const appSettings = pgTable("app_settings", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  key: text("key").notNull().unique(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertAppSettingsSchema = createInsertSchema(appSettings, {
+  key: z.string(),
+  value: z.any(),
+});
+
+export type InsertAppSettings = typeof appSettings.$inferInsert;
+export type AppSettingsRow = typeof appSettings.$inferSelect;

@@ -154,13 +154,56 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return DEFAULT_APP_SETTINGS;
   });
 
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Load settings from database on mount
   useEffect(() => {
+    const loadFromServer = async () => {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const serverSettings = await res.json();
+          if (serverSettings.staff) setStaffState(serverSettings.staff);
+          if (serverSettings.pipelines) setPipelinesState(serverSettings.pipelines);
+          if (serverSettings.appSettings) setAppSettingsState(serverSettings.appSettings);
+        }
+      } catch (e) {
+        console.error("Failed to load settings from server:", e);
+      }
+      setIsLoaded(true);
+    };
+    loadFromServer();
+  }, []);
+
+  // Save settings to both localStorage and database when they change
+  useEffect(() => {
+    if (!isLoaded) return; // Don't save until we've loaded from server
+    
+    const settingsData = { staff, pipelines, appSettings };
+    
+    // Save to localStorage for fast local access
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ staff, pipelines, appSettings }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsData));
     } catch (e) {
-      console.error("Failed to save settings to storage:", e);
+      console.error("Failed to save settings to localStorage:", e);
     }
-  }, [staff, pipelines, appSettings]);
+    
+    // Debounced save to database
+    const saveToServer = async () => {
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settingsData),
+        });
+      } catch (e) {
+        console.error("Failed to save settings to server:", e);
+      }
+    };
+    
+    const timeoutId = setTimeout(saveToServer, 1000); // Debounce 1 second
+    return () => clearTimeout(timeoutId);
+  }, [staff, pipelines, appSettings, isLoaded]);
 
   const setStaff = (newStaff: StaffMember[]) => setStaffState(newStaff);
   

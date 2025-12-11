@@ -152,6 +152,50 @@ export async function registerRoutes(
     }
   });
 
+  // Get all app settings
+  app.get("/api/settings", async (req, res) => {
+    try {
+      const settings = await storage.getAllAppSettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching settings:", error);
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  // Save all app settings
+  app.post("/api/settings", async (req, res) => {
+    try {
+      await storage.saveAllAppSettings(req.body);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error saving settings:", error);
+      res.status(500).json({ error: "Failed to save settings" });
+    }
+  });
+
+  // Get a specific setting
+  app.get("/api/settings/:key", async (req, res) => {
+    try {
+      const value = await storage.getAppSetting(req.params.key);
+      res.json({ key: req.params.key, value });
+    } catch (error) {
+      console.error("Error fetching setting:", error);
+      res.status(500).json({ error: "Failed to fetch setting" });
+    }
+  });
+
+  // Set a specific setting
+  app.put("/api/settings/:key", async (req, res) => {
+    try {
+      await storage.setAppSetting(req.params.key, req.body.value);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error saving setting:", error);
+      res.status(500).json({ error: "Failed to save setting" });
+    }
+  });
+
   // Sync with ServiceM8
   app.post("/api/sync/servicem8", async (req, res) => {
     try {
@@ -173,13 +217,14 @@ export async function registerRoutes(
       let errorMessage = null;
 
       try {
-        // Bulk fetch all data in parallel for speed (including custom fields for staff assignment)
-        const [sm8Jobs, contactMap, companyMap, customFieldMap, notesMap] = await Promise.all([
+        // Bulk fetch all data in parallel for speed (including custom fields for staff assignment and badge definitions)
+        const [sm8Jobs, contactMap, companyMap, customFieldMap, notesMap, badgeDefinitions] = await Promise.all([
           sm8Client.fetchJobs(),
           sm8Client.fetchAllJobContacts(),
           sm8Client.fetchAllCompanies(),
           sm8Client.fetchAllJobCustomFields(),
-          sm8Client.fetchAllJobNotes()
+          sm8Client.fetchAllJobNotes(),
+          sm8Client.fetchBadges()
         ]);
         
         for (const sm8Job of sm8Jobs) {
@@ -202,7 +247,7 @@ export async function registerRoutes(
             }
           }
           
-          const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName, customFieldMap);
+          const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName, customFieldMap, badgeDefinitions);
           
           // Add communication history from email/SMS only
           const lastComm = notesMap.get(sm8Job.uuid);
@@ -762,15 +807,64 @@ export async function registerRoutes(
     });
   });
 
-  // Fetch Job Activity/Diary using OAuth token
+  // Fetch Job Activity/Diary - try API key first, fallback to OAuth
   app.get("/api/servicem8/job-activity/:jobUuid", async (req, res) => {
+    const { jobUuid } = req.params;
+    const apiKey = process.env.SERVICEM8_API_KEY;
+    
     try {
-      const token = await storage.getOAuthToken("servicem8");
-      if (!token) {
-        return res.status(401).json({ error: "Not connected to ServiceM8 OAuth. Please connect first." });
+      // Try API key first (more reliable)
+      if (apiKey) {
+        const [activitiesRes, notesRes, feedRes] = await Promise.all([
+          fetch(`https://api.servicem8.com/api_1.0/jobactivity.json?%24filter=job_uuid%20eq%20'${jobUuid}'`, {
+            headers: { "X-API-Key": apiKey, "Content-Type": "application/json" }
+          }),
+          fetch(`https://api.servicem8.com/api_1.0/note.json?%24filter=related_object%20eq%20'job'%20and%20related_object_uuid%20eq%20'${jobUuid}'`, {
+            headers: { "X-API-Key": apiKey, "Content-Type": "application/json" }
+          }),
+          fetch(`https://api.servicem8.com/api_1.0/feeditem.json?%24filter=related_object_uuid%20eq%20'${jobUuid}'&%24orderby=timestamp%20desc&%24top=100`, {
+            headers: { "X-API-Key": apiKey, "Content-Type": "application/json" }
+          })
+        ]);
+
+        const activities = activitiesRes.ok ? await activitiesRes.json() : [];
+        const notes = notesRes.ok ? await notesRes.json() : [];
+        const feedItems = feedRes.ok ? await feedRes.json() : [];
+
+        // Combine and format all activity types
+        const allActivity = [
+          ...activities.map((a: any) => ({
+            type: a.activity_type || 'activity',
+            timestamp: a.timestamp,
+            description: a.description || a.activity_type,
+            staff: a.staff_name || a.staff_uuid,
+            details: a
+          })),
+          ...notes.map((n: any) => ({
+            type: 'note',
+            timestamp: n.timestamp,
+            description: n.note,
+            staff: n.staff_name || n.staff_uuid,
+            details: n
+          })),
+          ...feedItems.map((f: any) => ({
+            type: f.type || 'feed',
+            timestamp: f.timestamp,
+            description: f.message || f.description || f.type,
+            staff: f.staff_name || f.created_by_staff_uuid,
+            details: f
+          }))
+        ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        return res.json(allActivity);
       }
 
-      const { jobUuid } = req.params;
+      // Fallback to OAuth
+      const token = await storage.getOAuthToken("servicem8");
+      if (!token) {
+        return res.status(401).json({ error: "ServiceM8 not configured. Please set API key or connect OAuth." });
+      }
+
       const response = await fetch(
         `https://api.servicem8.com/api_1.0/jobactivity.json?%24filter=job_uuid%20eq%20'${jobUuid}'`,
         {

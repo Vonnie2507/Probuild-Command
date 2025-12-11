@@ -1,4 +1,4 @@
-import { type SelectJob, type InsertJob, jobs, type Staff, type InsertStaff, staff, type SyncLog, type InsertSyncLog, syncLog, type OAuthToken, type InsertOAuthToken, oauthTokens, type WorkType, type InsertWorkType, workTypes, type WorkTypeStage, type InsertWorkTypeStage, workTypeStages, type JobStageProgress, type InsertJobStageProgress, jobStageProgress } from "@shared/schema";
+import { type SelectJob, type InsertJob, jobs, type Staff, type InsertStaff, staff, type SyncLog, type InsertSyncLog, syncLog, type OAuthToken, type InsertOAuthToken, oauthTokens, type WorkType, type InsertWorkType, workTypes, type WorkTypeStage, type InsertWorkTypeStage, workTypeStages, type JobStageProgress, type InsertJobStageProgress, jobStageProgress, appSettings } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, asc } from "drizzle-orm";
 
@@ -258,6 +258,37 @@ export class DatabaseStorage implements IStorage {
         stageId: stage.id,
         status: 'pending',
       }).onConflictDoNothing();
+    }
+  }
+
+  // App Settings
+  async getAppSetting(key: string): Promise<any | undefined> {
+    const [row] = await db.select().from(appSettings).where(eq(appSettings.key, key));
+    return row?.value;
+  }
+
+  async getAllAppSettings(): Promise<Record<string, any>> {
+    const rows = await db.select().from(appSettings);
+    const result: Record<string, any> = {};
+    for (const row of rows) {
+      result[row.key] = row.value;
+    }
+    return result;
+  }
+
+  async setAppSetting(key: string, value: any): Promise<void> {
+    await db
+      .insert(appSettings)
+      .values({ key, value, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: appSettings.key,
+        set: { value, updatedAt: new Date() }
+      });
+  }
+
+  async saveAllAppSettings(settings: Record<string, any>): Promise<void> {
+    for (const [key, value] of Object.entries(settings)) {
+      await this.setAppSetting(key, value);
     }
   }
 }

@@ -50,6 +50,8 @@ function mapDbJobToJob(dbJob: SelectJob): Job {
     postInstallCrewSize: dbJob.postInstallCrewSize || 2,
     panelInstallDuration: dbJob.panelInstallDuration || 8,
     panelInstallCrewSize: dbJob.panelInstallCrewSize || 2,
+    salesStage: dbJob.salesStage || "new_lead",
+    badges: dbJob.badges || [],
   };
 }
 
