@@ -782,12 +782,26 @@ function TentativePlannerView({
   twoWeeksFromNow: Date;
   dailyTotalHours: number;
 }) {
-  // Jobs that can be tentatively scheduled (all jobs, even early stage)
-  const unscheduledJobs = jobs.filter(j => 
-    !j.tentativePostDate && 
-    !j.postInstallDate && 
-    j.installStage !== 'completed'
-  );
+  // Jobs available for tentative scheduling:
+  // - Recently won jobs (work orders, not quotes/leads)
+  // - Not completed or cancelled
+  // - No tentative dates yet
+  // - Not already in the confirmed schedule
+  const unscheduledJobs = jobs.filter(j => {
+    const status = (j.status || '').toLowerCase();
+    // Exclude completed and cancelled jobs
+    if (status === 'completed' || status === 'cancelled' || status === 'unsuccessful') return false;
+    // Exclude jobs already in confirmed schedule
+    if (j.postInstallDate || j.panelInstallDate) return false;
+    // Exclude jobs already with tentative bookings
+    if (j.tentativePostDate || j.tentativePanelDate) return false;
+    // Only include work orders (won jobs), not quotes or leads
+    const phase = j.lifecyclePhase as string;
+    if (phase === 'quote' || phase === 'lead') return false;
+    // Exclude scheduler stage 'recently_completed'
+    if (j.schedulerStage === 'recently_completed') return false;
+    return true;
+  });
   
   // Jobs with tentative bookings
   const tentativeJobs = jobs.filter(j => j.tentativePostDate || j.tentativePanelDate);
