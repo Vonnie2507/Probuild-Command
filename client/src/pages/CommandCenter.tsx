@@ -73,6 +73,88 @@ export default function CommandCenter() {
     );
   };
 
+  const handleTentativeSchedule = (jobId: string, type: 'posts' | 'panels', date: Date) => {
+    setJobs((prev) =>
+      prev.map((job) => {
+        if (job.id !== jobId) return job;
+        
+        if (type === 'posts') {
+          return {
+            ...job,
+            tentativePostDate: date,
+            installStage: 'tentative_posts' as const,
+          };
+        } else {
+          return {
+            ...job,
+            tentativePanelDate: date,
+            installStage: 'tentative_panels' as const,
+          };
+        }
+      })
+    );
+  };
+
+  const handleUnscheduleTentative = (jobId: string, type: 'posts' | 'panels') => {
+    setJobs((prev) =>
+      prev.map((job) => {
+        if (job.id !== jobId) return job;
+        
+        if (type === 'posts') {
+          return {
+            ...job,
+            tentativePostDate: undefined,
+            installStage: 'pending_posts' as const,
+          };
+        } else {
+          return {
+            ...job,
+            tentativePanelDate: undefined,
+            installStage: 'pending_panels' as const,
+          };
+        }
+      })
+    );
+  };
+
+  const handleConfirmTentative = (jobId: string, type: 'posts' | 'panels') => {
+    const now = new Date();
+    const twoWeeksFromNow = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    
+    setJobs((prev) =>
+      prev.map((job) => {
+        if (job.id !== jobId) return job;
+        
+        if (type === 'posts' && job.tentativePostDate) {
+          // Enforce 2-week guardrail
+          if (job.tentativePostDate > twoWeeksFromNow) {
+            console.warn('Cannot confirm: date is more than 2 weeks out');
+            return job;
+          }
+          return {
+            ...job,
+            postInstallDate: job.tentativePostDate,
+            tentativePostDate: undefined,
+            installStage: 'posts_scheduled' as const,
+          };
+        } else if (type === 'panels' && job.tentativePanelDate) {
+          // Enforce 2-week guardrail
+          if (job.tentativePanelDate > twoWeeksFromNow) {
+            console.warn('Cannot confirm: date is more than 2 weeks out');
+            return job;
+          }
+          return {
+            ...job,
+            panelInstallDate: job.tentativePanelDate,
+            tentativePanelDate: undefined,
+            installStage: 'panels_scheduled' as const,
+          };
+        }
+        return job;
+      })
+    );
+  };
+
   const filteredJobs = jobs.filter((job) => {
     const staffMatch = selectedStaff === "all" || job.assignedStaff === selectedStaff;
     const searchMatch = 
@@ -236,6 +318,9 @@ export default function CommandCenter() {
             onJobMove={handleJobMove}
             onScheduleJob={handleScheduleJob}
             onUnscheduleJob={handleUnscheduleJob}
+            onTentativeSchedule={handleTentativeSchedule}
+            onUnscheduleTentative={handleUnscheduleTentative}
+            onConfirmTentative={handleConfirmTentative}
           />
         )}
       </main>
