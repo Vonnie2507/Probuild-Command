@@ -1,15 +1,15 @@
-import { type Job, type InsertJob, jobs, type Staff, type InsertStaff, staff, type SyncLog, type InsertSyncLog, syncLog } from "@shared/schema";
+import { type SelectJob, type InsertJob, jobs, type Staff, type InsertStaff, staff, type SyncLog, type InsertSyncLog, syncLog } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
 
 export interface IStorage {
   // Jobs
-  getAllJobs(): Promise<Job[]>;
-  getJob(id: number): Promise<Job | undefined>;
-  getJobByServiceM8Uuid(uuid: string): Promise<Job | undefined>;
-  createJob(job: InsertJob): Promise<Job>;
-  updateJob(id: number, job: Partial<InsertJob>): Promise<Job | undefined>;
-  upsertJobByServiceM8Uuid(job: InsertJob): Promise<Job>;
+  getAllJobs(): Promise<SelectJob[]>;
+  getJob(id: number): Promise<SelectJob | undefined>;
+  getJobByServiceM8Uuid(uuid: string): Promise<SelectJob | undefined>;
+  createJob(job: InsertJob): Promise<SelectJob>;
+  updateJob(id: number, job: Partial<InsertJob>): Promise<SelectJob | undefined>;
+  upsertJobByServiceM8Uuid(job: InsertJob): Promise<SelectJob>;
   
   // Staff
   getAllStaff(): Promise<Staff[]>;
@@ -25,26 +25,26 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   // Jobs
-  async getAllJobs(): Promise<Job[]> {
+  async getAllJobs(): Promise<SelectJob[]> {
     return await db.select().from(jobs).orderBy(desc(jobs.createdAt));
   }
 
-  async getJob(id: number): Promise<Job | undefined> {
+  async getJob(id: number): Promise<SelectJob | undefined> {
     const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
     return job || undefined;
   }
 
-  async getJobByServiceM8Uuid(uuid: string): Promise<Job | undefined> {
+  async getJobByServiceM8Uuid(uuid: string): Promise<SelectJob | undefined> {
     const [job] = await db.select().from(jobs).where(eq(jobs.serviceM8Uuid, uuid));
     return job || undefined;
   }
 
-  async createJob(insertJob: InsertJob): Promise<Job> {
-    const [job] = await db.insert(jobs).values([insertJob]).returning();
+  async createJob(insertJob: InsertJob): Promise<SelectJob> {
+    const [job] = await db.insert(jobs).values(insertJob).returning();
     return job;
   }
 
-  async updateJob(id: number, insertJob: Partial<InsertJob>): Promise<Job | undefined> {
+  async updateJob(id: number, insertJob: Partial<InsertJob>): Promise<SelectJob | undefined> {
     const updateData: any = { ...insertJob, updatedAt: new Date() };
     const [job] = await db
       .update(jobs)
@@ -54,7 +54,7 @@ export class DatabaseStorage implements IStorage {
     return job || undefined;
   }
 
-  async upsertJobByServiceM8Uuid(insertJob: InsertJob): Promise<Job> {
+  async upsertJobByServiceM8Uuid(insertJob: InsertJob): Promise<SelectJob> {
     const existing = await this.getJobByServiceM8Uuid(insertJob.serviceM8Uuid);
     if (existing) {
       const updated = await this.updateJob(existing.id, insertJob);
@@ -75,7 +75,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createStaffMember(insertStaff: InsertStaff): Promise<Staff> {
-    const [member] = await db.insert(staff).values([insertStaff]).returning();
+    const [member] = await db.insert(staff).values(insertStaff).returning();
     return member;
   }
 
@@ -91,7 +91,7 @@ export class DatabaseStorage implements IStorage {
 
   // Sync Logs
   async createSyncLog(insertLog: InsertSyncLog): Promise<SyncLog> {
-    const [log] = await db.insert(syncLog).values([insertLog]).returning();
+    const [log] = await db.insert(syncLog).values(insertLog).returning();
     return log;
   }
 

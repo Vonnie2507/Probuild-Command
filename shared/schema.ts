@@ -38,13 +38,19 @@ export const jobs = pgTable("jobs", {
   syncedAt: timestamp("synced_at"),
 });
 
-export const insertJobSchema = createInsertSchema(jobs).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+export const insertJobSchema = createInsertSchema(jobs, {
+  serviceM8Uuid: z.string(),
+  jobId: z.string(),
+  customerName: z.string(),
+  address: z.string(),
+  status: z.string(),
+  daysSinceLastContact: z.number(),
+  urgency: z.string(),
+  purchaseOrderStatus: z.string().optional(),
+  installStage: z.string().optional(),
 });
 
-export type InsertJob = z.infer<typeof insertJobSchema>;
+export type InsertJob = typeof jobs.$inferInsert;
 export type SelectJob = typeof jobs.$inferSelect;
 
 // Staff Members Table
@@ -59,11 +65,13 @@ export const staff = pgTable("staff", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const insertStaffSchema = createInsertSchema(staff).omit({
-  createdAt: true,
+export const insertStaffSchema = createInsertSchema(staff, {
+  id: z.string(),
+  name: z.string(),
+  role: z.string(),
 });
 
-export type InsertStaff = z.infer<typeof insertStaffSchema>;
+export type InsertStaff = typeof staff.$inferInsert;
 export type Staff = typeof staff.$inferSelect;
 
 // ServiceM8 Sync Log
@@ -78,9 +86,11 @@ export const syncLog = pgTable("sync_log", {
   completedAt: timestamp("completed_at"),
 });
 
-export const insertSyncLogSchema = createInsertSchema(syncLog).omit({
-  id: true,
+export const insertSyncLogSchema = createInsertSchema(syncLog, {
+  syncType: z.string(),
+  status: z.string(),
+  startedAt: z.date(),
 });
 
-export type InsertSyncLog = z.infer<typeof insertSyncLogSchema>;
+export type InsertSyncLog = typeof syncLog.$inferInsert;
 export type SyncLog = typeof syncLog.$inferSelect;

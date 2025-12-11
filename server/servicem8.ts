@@ -2,15 +2,19 @@ import { type InsertJob } from "@shared/schema";
 
 interface ServiceM8Job {
   uuid: string;
-  job_number: string;
-  company_name: string;
-  first_name: string;
-  last_name: string;
+  generated_job_id: string;
+  job_address: string;
   billing_address: string;
+  job_description: string;
+  work_done_description: string;
   status: string;
-  description: string;
-  total: number;
+  total_invoice_amount: string;
   active: number;
+  company_uuid: string;
+  queue_uuid: string;
+  quote_date: string;
+  quote_sent: string;
+  badges: string;
   [key: string]: any;
 }
 
@@ -22,7 +26,7 @@ export class ServiceM8Client {
     this.apiKey = apiKey;
   }
 
-  async fetchJobs(limit: number = 100): Promise<ServiceM8Job[]> {
+  async fetchJobs(limit: number = 1000): Promise<ServiceM8Job[]> {
     const response = await fetch(`${this.baseUrl}/job.json?%24filter=active%20eq%201&%24top=${limit}`, {
       headers: {
         "X-API-Key": this.apiKey,
@@ -37,21 +41,38 @@ export class ServiceM8Client {
     return await response.json();
   }
 
-  mapServiceM8JobToInsertJob(sm8Job: ServiceM8Job): InsertJob {
-    const customerName = sm8Job.company_name || `${sm8Job.first_name} ${sm8Job.last_name}`.trim();
+  async fetchCompany(companyUuid: string): Promise<{ name: string } | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/company/${companyUuid}.json`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      return { name: data.name || data.company_name || "Unknown" };
+    } catch {
+      return null;
+    }
+  }
+
+  mapServiceM8JobToInsertJob(sm8Job: ServiceM8Job, companyName?: string): InsertJob {
     const status = this.mapServiceM8StatusToAppStatus(sm8Job.status);
+    const address = sm8Job.job_address || sm8Job.billing_address || "No Address";
+    const quoteValue = parseFloat(sm8Job.total_invoice_amount) || 0;
 
     return {
       serviceM8Uuid: sm8Job.uuid,
-      jobId: `#${sm8Job.job_number}`,
-      customerName: customerName || "Unknown Customer",
-      address: sm8Job.billing_address || "No Address",
-      description: sm8Job.description || "PVC Fencing Installation",
-      quoteValue: sm8Job.total || 0,
+      jobId: sm8Job.generated_job_id ? `#${sm8Job.generated_job_id}` : "#N/A",
+      customerName: companyName || "Unknown Customer",
+      address: address,
+      description: sm8Job.job_description || "PVC Fencing Installation",
+      quoteValue: quoteValue,
       status: status,
       daysSinceLastContact: 0,
-      assignedStaff: "wayne", // Default assignment
-      lastNote: "",
+      assignedStaff: "wayne",
+      lastNote: sm8Job.work_done_description || "",
       urgency: "low",
       lastContactWho: "us",
       purchaseOrderStatus: "none",

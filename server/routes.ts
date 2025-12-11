@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { createServiceM8Client } from "./servicem8";
-import { insertJobSchema, insertStaffSchema } from "@shared/schema";
+import { insertJobSchema, insertStaffSchema, type InsertStaff } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(
@@ -65,7 +65,7 @@ export async function registerRoutes(
   // Create staff member
   app.post("/api/staff", async (req, res) => {
     try {
-      const validatedStaff = insertStaffSchema.parse(req.body);
+      const validatedStaff = insertStaffSchema.parse(req.body) as InsertStaff;
       const member = await storage.createStaffMember(validatedStaff);
       res.status(201).json(member);
     } catch (error) {
