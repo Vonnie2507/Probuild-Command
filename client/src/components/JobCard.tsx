@@ -456,16 +456,18 @@ export function JobCard({ job, index }: JobCardProps) {
                 
                 {/* Job Type Dropdown */}
                 <Select
-                  value={job.workTypeId?.toString() || ""}
+                  value={job.workTypeId?.toString() || "unassigned"}
                   onValueChange={handleWorkTypeChange}
                 >
                   <SelectTrigger 
-                    className="h-6 w-[120px] text-[10px] border-dashed"
+                    className="h-6 w-[130px] text-[10px] border-dashed"
                     onClick={(e) => e.stopPropagation()}
                     data-testid={`select-job-type-${job.id}`}
                   >
-                    <Wrench className="h-3 w-3 mr-1" />
-                    <SelectValue placeholder="Job Type" />
+                    <Wrench className="h-3 w-3 mr-1 shrink-0" />
+                    <span className="truncate">
+                      {currentWorkType?.name || "Job Type"}
+                    </span>
                   </SelectTrigger>
                   <SelectContent>
                     {workTypes.length > 0 ? (
