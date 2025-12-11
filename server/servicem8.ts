@@ -482,19 +482,21 @@ export class ServiceM8Client {
     
     // ONLY calculate time since quote sent if we have an actual sent timestamp
     // Do NOT fall back to quote_date - that's just creation date
+    // ServiceM8 stores timestamps in Perth local time (UTC+8)
     if (hasQuoteSent && quoteSentStamp && quoteSentStamp !== '' && quoteSentStamp !== '0000-00-00 00:00:00') {
       try {
-        const quoteSentDate = new Date(quoteSentStamp.replace(' ', 'T'));
+        // ServiceM8 timestamps are in Perth time (UTC+8), append timezone offset
+        const quoteSentDate = new Date(quoteSentStamp.replace(' ', 'T') + '+08:00');
         if (!isNaN(quoteSentDate.getTime())) {
           const now = new Date();
           const diffTime = now.getTime() - quoteSentDate.getTime();
           const totalHours = Math.floor(diffTime / (1000 * 60 * 60));
           
-          if (totalHours < 24) {
+          if (totalHours < 24 && totalHours >= 0) {
             // Less than 24 hours - store hours
             hoursSinceQuoteSent = totalHours;
             daysSinceQuoteSent = 0;
-          } else {
+          } else if (totalHours >= 24) {
             // 24+ hours - store days
             daysSinceQuoteSent = Math.floor(diffTime / (1000 * 60 * 60 * 24));
             hoursSinceQuoteSent = null;
