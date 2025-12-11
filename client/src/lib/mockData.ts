@@ -64,6 +64,9 @@ export interface Job {
   companyPhone?: string;
   companyMobile?: string;
   contacts?: JobContact[];
+  
+  // Sales pipeline stage for Quotes Pipeline (fresh, awaiting_reply, etc.)
+  salesStage?: string;
 }
 
 // Scheduler Kanban columns for work orders

@@ -7,9 +7,10 @@ interface PipelineBoardProps {
   columns: { id: string; title: string }[];
   jobs: Job[];
   onJobMove: (jobId: string, newStatus: string) => void;
+  statusField?: 'status' | 'salesStage';
 }
 
-export function PipelineBoard({ columns, jobs, onJobMove }: PipelineBoardProps) {
+export function PipelineBoard({ columns, jobs, onJobMove, statusField = 'status' }: PipelineBoardProps) {
   const onDragEnd = (result: DropResult) => {
     const { destination, source, draggableId } = result;
 
@@ -29,7 +30,7 @@ export function PipelineBoard({ columns, jobs, onJobMove }: PipelineBoardProps) 
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="flex h-full gap-4 overflow-x-auto pb-4 pt-2 px-1">
         {columns.map((col) => {
-          const colJobs = jobs.filter((job) => job.status === col.id);
+          const colJobs = jobs.filter((job) => (job as any)[statusField] === col.id);
           return (
             <PipelineColumn
               key={col.id}

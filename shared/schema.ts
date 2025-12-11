@@ -58,6 +58,7 @@ export const jobs = pgTable("jobs", {
   currentStageId: integer("current_stage_id"), // Current active stage
   lastCommunicationDate: timestamp("last_communication_date"), // Last email/SMS/call
   lastCommunicationType: text("last_communication_type"), // 'email' | 'sms' | 'call' | 'note'
+  salesStage: text("sales_stage"), // For Quotes Pipeline: 'fresh', 'awaiting_reply', etc.
 });
 
 export const insertJobSchema = createInsertSchema(jobs, {

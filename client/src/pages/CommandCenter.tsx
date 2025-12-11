@@ -375,7 +375,8 @@ export default function CommandCenter() {
               <PipelineBoard 
                   columns={pipelines.quotes} 
                   jobs={quoteJobs} 
-                  onJobMove={handleJobMove} 
+                  onJobMove={handleJobMove}
+                  statusField="salesStage"
                />
             </TabsContent>
           </Tabs>
