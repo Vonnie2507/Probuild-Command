@@ -15,10 +15,12 @@ import { format } from "date-fns";
 interface ServiceM8Note {
   uuid: string;
   note: string;
-  timestamp: string;
+  create_date: string;
+  edit_date?: string;
   entry_method?: string;
   note_type?: string;
   created_by_staff_name?: string;
+  active?: number;
 }
 
 interface JobCardProps {
@@ -47,7 +49,7 @@ export function JobCard({ job, index }: JobCardProps) {
         .then(data => {
           if (Array.isArray(data)) {
             const sorted = data.sort((a: ServiceM8Note, b: ServiceM8Note) => 
-              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+              new Date(b.create_date.replace(' ', 'T')).getTime() - new Date(a.create_date.replace(' ', 'T')).getTime()
             );
             setNotes(sorted);
           }
@@ -370,7 +372,7 @@ export function JobCard({ job, index }: JobCardProps) {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs font-medium text-muted-foreground">
-                            {format(new Date(note.timestamp), 'dd MMM yyyy, h:mm a')}
+                            {note.create_date ? format(new Date(note.create_date.replace(' ', 'T')), 'dd MMM yyyy, h:mm a') : 'Unknown date'}
                           </span>
                           {note.created_by_staff_name && (
                             <span className="text-xs text-muted-foreground">by {note.created_by_staff_name}</span>
