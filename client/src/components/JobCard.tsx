@@ -1,11 +1,15 @@
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Separator } from "@/components/ui/separator";
 import { Job } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
-import { CalendarClock, Mail, MessageSquare, Phone, User, AlertCircle, CheckCircle2, Clock, ExternalLink } from "lucide-react";
+import { CalendarClock, Mail, MessageSquare, Phone, User, AlertCircle, CheckCircle2, Clock, FileText, MapPin, DollarSign, Calendar, Briefcase, ExternalLink } from "lucide-react";
 import { Draggable } from "@hello-pangea/dnd";
+import { format } from "date-fns";
 
 interface JobCardProps {
   job: Job;
@@ -13,6 +17,8 @@ interface JobCardProps {
 }
 
 export function JobCard({ job, index }: JobCardProps) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  
   // Completed jobs are green, Quote phase jobs are orange, Work Order phase jobs are blue
   const getLifecycleColor = () => {
     if (job.status === 'complete' || job.schedulerStage === 'recently_completed') {
@@ -50,6 +56,7 @@ export function JobCard({ job, index }: JobCardProps) {
   };
 
   return (
+    <>
     <Draggable draggableId={job.id} index={index}>
       {(provided, snapshot) => (
         <div
@@ -181,45 +188,169 @@ export function JobCard({ job, index }: JobCardProps) {
                     size="icon" 
                     variant="ghost" 
                     className="h-6 w-6 hover:bg-white hover:text-orange-600 ml-auto"
-                    onClick={() => {
-                      if (job.serviceM8Uuid) {
-                        window.open(`https://go.servicem8.com/job/${job.serviceM8Uuid}`, '_blank');
-                      }
-                    }}
+                    onClick={() => setDetailsOpen(true)}
                   >
-                    <ExternalLink className="h-3.5 w-3.5" />
+                    <FileText className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top"><p>Open in ServiceM8</p></TooltipContent>
+                <TooltipContent side="top"><p>View job details</p></TooltipContent>
               </Tooltip>
             </CardFooter>
           </Card>
         </div>
       )}
     </Draggable>
-  );
-}
-
-// Icon helper
-function FileText(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="16" x2="8" y1="13" y2="13" />
-      <line x1="16" x2="8" y1="17" y2="17" />
-      <line x1="10" x2="8" y1="9" y2="9" />
-    </svg>
+    
+    <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-3">
+            <span className="text-lg font-mono bg-muted px-2 py-1 rounded">{job.jobId}</span>
+            <span className="text-xl">{job.customerName}</span>
+          </DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <MapPin className="h-4 w-4" />
+                <span>Address</span>
+              </div>
+              <p className="text-sm font-medium">{job.address || "No address"}</p>
+            </div>
+            
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <DollarSign className="h-4 w-4" />
+                <span>Quote Value</span>
+              </div>
+              <p className="text-lg font-bold text-primary">${job.quoteValue.toLocaleString()}</p>
+            </div>
+          </div>
+          
+          <Separator />
+          
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Briefcase className="h-4 w-4" />
+              <span>Description</span>
+            </div>
+            <p className="text-sm bg-muted/50 p-3 rounded-md">{job.description || "No description"}</p>
+          </div>
+          
+          <Separator />
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <User className="h-4 w-4" />
+                <span>Assigned Staff</span>
+              </div>
+              <p className="text-sm font-medium">{job.assignedStaff}</p>
+            </div>
+            
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                <span>Status</span>
+              </div>
+              <div className="flex gap-2">
+                <Badge variant={job.lifecyclePhase === 'work_order' ? 'default' : 'secondary'}>
+                  {job.lifecyclePhase === 'work_order' ? 'Work Order' : 'Quote'}
+                </Badge>
+                <Badge variant="outline">{job.status}</Badge>
+              </div>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <MessageSquare className="h-4 w-4" />
+                <span>Last Contact</span>
+              </div>
+              <p className="text-sm">
+                {job.lastCommunicationType === 'email' ? 'Email' : 
+                 job.lastCommunicationType === 'call' ? 'Phone call' : 
+                 job.lastCommunicationType === 'sms' ? 'SMS' : 'Note'} - {job.daysSinceLastContact} days ago
+              </p>
+            </div>
+            
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <AlertCircle className="h-4 w-4" />
+                <span>Priority</span>
+              </div>
+              <Badge variant={job.urgency === 'critical' ? 'destructive' : job.urgency === 'high' ? 'default' : 'secondary'}>
+                {job.urgency}
+              </Badge>
+            </div>
+          </div>
+          
+          {job.lastNote && (
+            <>
+              <Separator />
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <FileText className="h-4 w-4" />
+                  <span>Last Note</span>
+                </div>
+                <p className="text-sm bg-muted/50 p-3 rounded-md italic">"{job.lastNote}"</p>
+              </div>
+            </>
+          )}
+          
+          {(job.postInstallDate || job.panelInstallDate || job.tentativePostDate || job.tentativePanelDate) && (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Calendar className="h-4 w-4" />
+                  <span>Schedule</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  {job.postInstallDate && (
+                    <div className="bg-green-50 border border-green-200 p-2 rounded">
+                      <span className="font-medium text-green-700">Posts:</span> {format(job.postInstallDate, 'dd MMM yyyy')}
+                    </div>
+                  )}
+                  {job.panelInstallDate && (
+                    <div className="bg-green-50 border border-green-200 p-2 rounded">
+                      <span className="font-medium text-green-700">Panels:</span> {format(job.panelInstallDate, 'dd MMM yyyy')}
+                    </div>
+                  )}
+                  {job.tentativePostDate && (
+                    <div className="bg-amber-50 border border-amber-200 p-2 rounded">
+                      <span className="font-medium text-amber-700">Tentative Posts:</span> {format(job.tentativePostDate, 'dd MMM yyyy')}
+                    </div>
+                  )}
+                  {job.tentativePanelDate && (
+                    <div className="bg-amber-50 border border-amber-200 p-2 rounded">
+                      <span className="font-medium text-amber-700">Tentative Panels:</span> {format(job.tentativePanelDate, 'dd MMM yyyy')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+          
+          {job.serviceM8Uuid && (
+            <>
+              <Separator />
+              <Button 
+                variant="outline" 
+                className="w-full"
+                onClick={() => window.open(`https://go.servicem8.com/job/${job.serviceM8Uuid}`, '_blank')}
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Open in ServiceM8
+              </Button>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  </>
   );
 }
