@@ -278,83 +278,201 @@ export class ServiceM8Client {
     return contactMap;
   }
 
-  // Fetch last sent email/SMS for each job from activity feed
-  async fetchAllJobNotes(): Promise<Map<string, { date: Date; type: string; note: string }>> {
-    const commMap = new Map<string, { date: Date; type: string; note: string }>();
+  // Fetch last communication (email/SMS) for each job - tracks BOTH incoming from clients AND outgoing
+  // Returns separate tracking for: lastClientContact (when CLIENT contacted us) and lastAnyContact (any communication)
+  async fetchAllJobNotes(): Promise<Map<string, { date: Date; type: string; note: string; direction: 'inbound' | 'outbound' | 'unknown' }>> {
+    const commMap = new Map<string, { date: Date; type: string; note: string; direction: 'inbound' | 'outbound' | 'unknown' }>();
+
     try {
-      // Fetch activity/feed for sent messages - ServiceM8 uses feeditem for activity
+      // Fetch activity/feed for all messages - ServiceM8 uses feeditem for activity
       const response = await fetch(`${this.baseUrl}/feeditem.json?%24top=5000&%24orderby=timestamp%20desc`, {
         headers: {
           "X-API-Key": this.apiKey,
           "Content-Type": "application/json",
         },
       });
+
       if (!response.ok) {
         console.log("[Comms] Failed to fetch feed items:", response.status);
-        // Fall back to notes API
         return this.fetchJobNotesFromNotes();
       }
+
       const feedItems = await response.json();
       console.log(`[Comms] Fetched ${feedItems.length} feed items from ServiceM8`);
-      
-      // Log sample to understand structure
+
+      // Log unique types found for debugging
+      const uniqueTypes = new Set(feedItems.map((item: any) => item.type));
+      console.log(`[Comms] Unique feed item types found:`, Array.from(uniqueTypes));
+
+      // Log sample items for each type
       if (feedItems.length > 0) {
-        console.log(`[Comms] Sample feed item:`, JSON.stringify(feedItems[0], null, 2).substring(0, 500));
+        console.log(`[Comms] Sample feed item:`, JSON.stringify(feedItems[0], null, 2).substring(0, 800));
       }
-      
-      // Find INCOMING SMS and Email from customers (not outgoing from staff)
+
       for (const item of feedItems) {
         if (!item.related_object_uuid || item.related_object !== 'job') continue;
-        
+
         const jobUuid = item.related_object_uuid;
         const itemType = (item.type || '').toLowerCase();
         const message = (item.message || item.description || '').toLowerCase();
         const timestamp = item.timestamp ? new Date(item.timestamp) : new Date();
-        
-        // Only track INCOMING/RECEIVED emails and SMS from customers
+
+        // Determine communication type and direction
         let commType: string | null = null;
-        
-        // Check for received/incoming indicators
-        if (itemType === 'sms_received' || itemType === 'sms_inbound' || 
-            itemType.includes('sms') && (itemType.includes('received') || itemType.includes('inbound'))) {
+        let direction: 'inbound' | 'outbound' | 'unknown' = 'unknown';
+
+        // SMS detection - check for various ServiceM8 type patterns
+        if (itemType.includes('sms') || itemType.includes('text_message')) {
           commType = 'sms';
-        } else if (itemType === 'email_received' || itemType === 'email_inbound' ||
-            itemType.includes('email') && (itemType.includes('received') || itemType.includes('inbound'))) {
-          commType = 'email';
-        }
-        // Also check message content for "received" or "from customer" patterns
-        else if (message.includes('received') || message.includes('from customer') || message.includes('customer replied')) {
-          if (message.includes('sms') || message.includes('text')) {
-            commType = 'sms';
-          } else if (message.includes('email')) {
-            commType = 'email';
+          // Determine direction
+          if (itemType.includes('received') || itemType.includes('inbound') || itemType.includes('incoming')) {
+            direction = 'inbound';
+          } else if (itemType.includes('sent') || itemType.includes('outbound') || itemType.includes('outgoing')) {
+            direction = 'outbound';
           }
         }
-        
-        // Skip if not an incoming email or SMS
+        // Email detection
+        else if (itemType.includes('email') || itemType.includes('mail')) {
+          commType = 'email';
+          if (itemType.includes('received') || itemType.includes('inbound') || itemType.includes('incoming')) {
+            direction = 'inbound';
+          } else if (itemType.includes('sent') || itemType.includes('outbound') || itemType.includes('outgoing')) {
+            direction = 'outbound';
+          }
+        }
+        // Check message content as fallback
+        else if (message.includes('sms') || message.includes('text message')) {
+          commType = 'sms';
+          if (message.includes('received') || message.includes('from customer') || message.includes('customer replied') || message.includes('incoming')) {
+            direction = 'inbound';
+          } else if (message.includes('sent') || message.includes('to customer')) {
+            direction = 'outbound';
+          }
+        }
+        else if (message.includes('email') || message.includes('e-mail')) {
+          commType = 'email';
+          if (message.includes('received') || message.includes('from customer') || message.includes('customer replied') || message.includes('incoming')) {
+            direction = 'inbound';
+          } else if (message.includes('sent') || message.includes('to customer')) {
+            direction = 'outbound';
+          }
+        }
+        // Also detect quote-related emails
+        else if (itemType.includes('quote') && (message.includes('email') || message.includes('sent'))) {
+          commType = 'email';
+          direction = 'outbound';
+        }
+
+        // Skip if not an email or SMS
         if (!commType) continue;
-        
-        // Only keep the most recent incoming message per job
+
+        // Keep the most recent communication per job
         const existing = commMap.get(jobUuid);
         if (!existing || timestamp > existing.date) {
           commMap.set(jobUuid, {
             date: timestamp,
             type: commType,
-            note: item.message || item.description || ''
+            note: item.message || item.description || '',
+            direction
           });
         }
       }
-      
-      console.log(`[Comms] Mapped last email/SMS for ${commMap.size} jobs`);
+
+      console.log(`[Comms] Mapped last communication for ${commMap.size} jobs`);
+
+      // Log some stats about directions found
+      let inboundCount = 0, outboundCount = 0, unknownCount = 0;
+      commMap.forEach(v => {
+        if (v.direction === 'inbound') inboundCount++;
+        else if (v.direction === 'outbound') outboundCount++;
+        else unknownCount++;
+      });
+      console.log(`[Comms] Direction breakdown - Inbound: ${inboundCount}, Outbound: ${outboundCount}, Unknown: ${unknownCount}`);
+
     } catch (e) {
       console.error("[Comms] Error fetching feed items:", e);
     }
     return commMap;
   }
 
+  // NEW: Fetch last time CLIENT contacted us (inbound only) for each job
+  async fetchLastClientContact(): Promise<Map<string, { date: Date; type: string; note: string }>> {
+    const clientContactMap = new Map<string, { date: Date; type: string; note: string }>();
+
+    try {
+      const response = await fetch(`${this.baseUrl}/feeditem.json?%24top=5000&%24orderby=timestamp%20desc`, {
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        console.log("[ClientContact] Failed to fetch feed items:", response.status);
+        return clientContactMap;
+      }
+
+      const feedItems = await response.json();
+
+      for (const item of feedItems) {
+        if (!item.related_object_uuid || item.related_object !== 'job') continue;
+
+        const jobUuid = item.related_object_uuid;
+        const itemType = (item.type || '').toLowerCase();
+        const message = (item.message || item.description || '').toLowerCase();
+        const timestamp = item.timestamp ? new Date(item.timestamp) : new Date();
+
+        // Only track INBOUND communications from clients
+        let isClientContact = false;
+        let commType = 'unknown';
+
+        // Check for inbound SMS
+        if (itemType.includes('sms') && (itemType.includes('received') || itemType.includes('inbound') || itemType.includes('incoming'))) {
+          isClientContact = true;
+          commType = 'sms';
+        }
+        // Check for inbound email
+        else if (itemType.includes('email') && (itemType.includes('received') || itemType.includes('inbound') || itemType.includes('incoming'))) {
+          isClientContact = true;
+          commType = 'email';
+        }
+        // Check message content for client contact indicators
+        else if ((message.includes('received') || message.includes('from customer') || message.includes('customer replied') ||
+                  message.includes('customer called') || message.includes('incoming'))) {
+          isClientContact = true;
+          if (message.includes('sms') || message.includes('text')) {
+            commType = 'sms';
+          } else if (message.includes('email')) {
+            commType = 'email';
+          } else if (message.includes('call') || message.includes('phone')) {
+            commType = 'call';
+          }
+        }
+
+        if (!isClientContact) continue;
+
+        // Keep the most recent client contact per job
+        const existing = clientContactMap.get(jobUuid);
+        if (!existing || timestamp > existing.date) {
+          clientContactMap.set(jobUuid, {
+            date: timestamp,
+            type: commType,
+            note: item.message || item.description || ''
+          });
+        }
+      }
+
+      console.log(`[ClientContact] Found last client contact for ${clientContactMap.size} jobs`);
+    } catch (e) {
+      console.error("[ClientContact] Error:", e);
+    }
+
+    return clientContactMap;
+  }
+
   // Fallback: Parse notes to find email/SMS mentions
-  private async fetchJobNotesFromNotes(): Promise<Map<string, { date: Date; type: string; note: string }>> {
-    const commMap = new Map<string, { date: Date; type: string; note: string }>();
+  private async fetchJobNotesFromNotes(): Promise<Map<string, { date: Date; type: string; note: string; direction: 'inbound' | 'outbound' | 'unknown' }>> {
+    const commMap = new Map<string, { date: Date; type: string; note: string; direction: 'inbound' | 'outbound' | 'unknown' }>();
     try {
       const response = await fetch(`${this.baseUrl}/note.json?%24top=5000&%24orderby=timestamp%20desc`, {
         headers: {
@@ -367,31 +485,56 @@ export class ServiceM8Client {
       
       for (const note of notes) {
         if (!note.related_object_uuid || note.related_object !== 'job') continue;
-        
+
         const jobUuid = note.related_object_uuid;
         const noteText = (note.note || '').toLowerCase();
         const timestamp = note.timestamp ? new Date(note.timestamp) : new Date();
-        
-        // ONLY track INCOMING emails and SMS from customers - not outgoing
+
+        // Track ALL emails and SMS, determining direction
         let commType: string | null = null;
-        if (noteText.includes('email received') || noteText.includes('received email') || 
-            noteText.includes('customer email') || noteText.includes('email from')) {
+        let direction: 'inbound' | 'outbound' | 'unknown' = 'unknown';
+
+        // Check for inbound indicators
+        if (noteText.includes('email received') || noteText.includes('received email') ||
+            noteText.includes('customer email') || noteText.includes('email from') ||
+            noteText.includes('incoming email')) {
           commType = 'email';
-        } else if (noteText.includes('sms received') || noteText.includes('received sms') || 
+          direction = 'inbound';
+        } else if (noteText.includes('sms received') || noteText.includes('received sms') ||
             noteText.includes('customer sms') || noteText.includes('sms from') ||
-            noteText.includes('text received') || noteText.includes('received text')) {
+            noteText.includes('text received') || noteText.includes('received text') ||
+            noteText.includes('incoming sms')) {
+          commType = 'sms';
+          direction = 'inbound';
+        }
+        // Check for outbound indicators
+        else if (noteText.includes('email sent') || noteText.includes('sent email') ||
+            noteText.includes('emailed customer') || noteText.includes('email to')) {
+          commType = 'email';
+          direction = 'outbound';
+        } else if (noteText.includes('sms sent') || noteText.includes('sent sms') ||
+            noteText.includes('texted customer') || noteText.includes('sms to') ||
+            noteText.includes('text sent')) {
+          commType = 'sms';
+          direction = 'outbound';
+        }
+        // Generic email/sms mentions (unknown direction)
+        else if (noteText.includes('email')) {
+          commType = 'email';
+        } else if (noteText.includes('sms') || noteText.includes('text message')) {
           commType = 'sms';
         }
-        
-        // Skip if not an incoming email or SMS
+
+        // Skip if not an email or SMS
         if (!commType) continue;
-        
+
         const existing = commMap.get(jobUuid);
         if (!existing || timestamp > existing.date) {
           commMap.set(jobUuid, {
             date: timestamp,
             type: commType,
-            note: note.note || ''
+            note: note.note || '',
+            direction
           });
         }
       }

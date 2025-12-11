@@ -53,9 +53,15 @@ export interface Job {
   // Work type for dynamic stage tracking
   workTypeId?: number;
   
-  // Communication tracking
+  // Communication tracking (any direction)
   lastCommunicationDate?: Date;
   lastCommunicationType?: 'email' | 'sms' | 'call' | 'note';
+  lastCommunicationDirection?: 'inbound' | 'outbound' | 'unknown';
+
+  // Client contact tracking (inbound only - when CLIENT contacted US)
+  lastClientContactDate?: Date;
+  lastClientContactType?: 'email' | 'sms' | 'call';
+  daysSinceClientContact?: number;
   
   // Company contact info (enriched from ServiceM8)
   companyUuid?: string;

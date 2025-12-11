@@ -318,19 +318,20 @@ export async function registerRoutes(
 
       try {
         // Bulk fetch all data in parallel for speed (including custom fields for staff assignment and badge definitions)
-        const [sm8Jobs, contactMap, companyMap, customFieldMap, notesMap, badgeDefinitions] = await Promise.all([
+        const [sm8Jobs, contactMap, companyMap, customFieldMap, notesMap, clientContactMap, badgeDefinitions] = await Promise.all([
           sm8Client.fetchJobs(),
           sm8Client.fetchAllJobContacts(),
           sm8Client.fetchAllCompanies(),
           sm8Client.fetchAllJobCustomFields(),
           sm8Client.fetchAllJobNotes(),
+          sm8Client.fetchLastClientContact(), // NEW: fetch when CLIENT last contacted us
           sm8Client.fetchBadges()
         ]);
-        
+
         for (const sm8Job of sm8Jobs) {
           // Get customer name: prioritize company name, then job contact
           let customerName = "Unknown Customer";
-          
+
           // First try company name (this is the main customer record in ServiceM8)
           if (sm8Job.company_uuid) {
             const companyName = companyMap.get(sm8Job.company_uuid);
@@ -338,7 +339,7 @@ export async function registerRoutes(
               customerName = companyName;
             }
           }
-          
+
           // Fall back to job contact name if no company
           if (customerName === "Unknown Customer") {
             const contact = contactMap.get(sm8Job.uuid);
@@ -346,23 +347,37 @@ export async function registerRoutes(
               customerName = `${contact.first} ${contact.last}`.trim();
             }
           }
-          
+
           const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName, customFieldMap, badgeDefinitions);
-          
-          // Add communication history from email/SMS only
+
+          // Add communication history (any direction - inbound or outbound)
           const lastComm = notesMap.get(sm8Job.uuid);
           if (lastComm) {
             (mappedJob as any).lastCommunicationDate = lastComm.date;
             (mappedJob as any).lastCommunicationType = lastComm.type;
+            (mappedJob as any).lastCommunicationDirection = lastComm.direction;
             const daysSince = Math.floor((Date.now() - lastComm.date.getTime()) / (1000 * 60 * 60 * 24));
             mappedJob.daysSinceLastContact = daysSince;
           } else {
-            // Clear old communication data if no email/SMS found
             (mappedJob as any).lastCommunicationDate = null;
             (mappedJob as any).lastCommunicationType = null;
+            (mappedJob as any).lastCommunicationDirection = null;
             mappedJob.daysSinceLastContact = null;
           }
-          
+
+          // NEW: Add CLIENT contact tracking (inbound only - when client contacted US)
+          const lastClientContact = clientContactMap.get(sm8Job.uuid);
+          if (lastClientContact) {
+            (mappedJob as any).lastClientContactDate = lastClientContact.date;
+            (mappedJob as any).lastClientContactType = lastClientContact.type;
+            const daysSinceClient = Math.floor((Date.now() - lastClientContact.date.getTime()) / (1000 * 60 * 60 * 24));
+            (mappedJob as any).daysSinceClientContact = daysSinceClient;
+          } else {
+            (mappedJob as any).lastClientContactDate = null;
+            (mappedJob as any).lastClientContactType = null;
+            (mappedJob as any).daysSinceClientContact = null;
+          }
+
           await storage.upsertJobByServiceM8Uuid(mappedJob);
           jobsProcessed++;
         }
@@ -481,9 +496,9 @@ export async function registerRoutes(
       }
 
       console.log("SMS sent successfully:", result);
-      
-      res.json({ 
-        success: true, 
+
+      res.json({
+        success: true,
         message: result.message || "SMS sent successfully",
         messageId: result.messageID,
         to: result.to
@@ -491,6 +506,85 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Error sending SMS:", error);
       res.status(500).json({ error: "Failed to send SMS", message: "An unexpected error occurred. Please try again." });
+    }
+  });
+
+  // Send Email via ServiceM8 messaging API
+  app.post("/api/messaging/email", async (req, res) => {
+    try {
+      const { to, subject, body, jobUuid, staffUuid } = req.body;
+
+      if (!to || !subject || !body) {
+        return res.status(400).json({ error: "Missing required fields: to, subject, body" });
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(to)) {
+        return res.status(400).json({ error: "Invalid email address format" });
+      }
+
+      const token = await getValidOAuthToken();
+      if (!token) {
+        return res.status(401).json({
+          error: "ServiceM8 not connected",
+          message: "Please connect to ServiceM8 in Settings first"
+        });
+      }
+
+      // Build headers with optional staff impersonation
+      const headers: Record<string, string> = {
+        "Authorization": `Bearer ${token.accessToken}`,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      };
+
+      if (staffUuid) {
+        headers["x-impersonate-uuid"] = staffUuid;
+      }
+
+      // Build payload for ServiceM8 platform email API
+      const payload: Record<string, string> = {
+        to: to,
+        subject: subject,
+        body: body,
+      };
+
+      // Link to job if UUID provided
+      if (jobUuid) {
+        payload.regardingJobUUID = jobUuid;
+      }
+
+      // Send email via ServiceM8 platform email API
+      const emailResponse = await fetch("https://api.servicem8.com/platform_service_email", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      const result = await emailResponse.json().catch(() => ({}));
+
+      if (!emailResponse.ok) {
+        console.error("ServiceM8 email send failed:", emailResponse.status, result);
+        const errorMessage = result.message || "Failed to send email. Please check the email address and try again.";
+        return res.status(emailResponse.status).json({
+          error: "Failed to send email",
+          message: errorMessage,
+          errorCode: result.errorCode
+        });
+      }
+
+      console.log("Email sent successfully:", result);
+
+      res.json({
+        success: true,
+        message: result.message || "Email sent successfully",
+        messageId: result.messageID,
+        to: result.to
+      });
+    } catch (error: any) {
+      console.error("Error sending email:", error);
+      res.status(500).json({ error: "Failed to send email", message: "An unexpected error occurred. Please try again." });
     }
   });
 
@@ -905,6 +999,235 @@ export async function registerRoutes(
       appSecretEnv: !!process.env.SERVICEM8_APP_SECRET,
       clientSecretEnv: !!process.env.SERVICEM8_CLIENT_SECRET,
     });
+  });
+
+  // ============== COMPREHENSIVE COMMUNICATION DEBUG ENDPOINT ==============
+  // This endpoint shows ALL raw communication data from ServiceM8 for a job
+  app.get("/api/debug/job-communications/:jobUuid", async (req, res) => {
+    const { jobUuid } = req.params;
+    const debugData: Record<string, any> = {
+      jobUuid,
+      timestamp: new Date().toISOString(),
+      endpoints: {}
+    };
+
+    try {
+      const token = await getValidOAuthToken();
+      const apiKey = process.env.SERVICEM8_API_KEY;
+
+      if (!token && !apiKey) {
+        return res.status(401).json({
+          error: "No ServiceM8 credentials available",
+          hasOAuth: false,
+          hasApiKey: false
+        });
+      }
+
+      const headers = token
+        ? { "Authorization": `Bearer ${token.accessToken}`, "Content-Type": "application/json" }
+        : { "X-API-Key": apiKey!, "Content-Type": "application/json" };
+
+      debugData.authMethod = token ? "OAuth" : "API Key";
+
+      // 1. Fetch feeditems (activity feed - emails, SMS, etc)
+      try {
+        const feedRes = await fetch(
+          `https://api.servicem8.com/api_1.0/feeditem.json?%24filter=related_object_uuid%20eq%20'${jobUuid}'&%24orderby=timestamp%20desc&%24top=50`,
+          { headers }
+        );
+        if (feedRes.ok) {
+          const feedItems = await feedRes.json();
+          debugData.endpoints.feeditem = {
+            status: feedRes.status,
+            count: feedItems.length,
+            items: feedItems.map((item: any) => ({
+              uuid: item.uuid,
+              type: item.type,
+              timestamp: item.timestamp,
+              message: item.message?.substring(0, 200),
+              description: item.description?.substring(0, 200),
+              staff_name: item.staff_name,
+              related_object: item.related_object,
+              all_fields: Object.keys(item)
+            }))
+          };
+        } else {
+          debugData.endpoints.feeditem = { status: feedRes.status, error: await feedRes.text() };
+        }
+      } catch (e: any) {
+        debugData.endpoints.feeditem = { error: e.message };
+      }
+
+      // 2. Fetch jobactivity
+      try {
+        const activityRes = await fetch(
+          `https://api.servicem8.com/api_1.0/jobactivity.json?%24filter=job_uuid%20eq%20'${jobUuid}'&%24orderby=timestamp%20desc&%24top=50`,
+          { headers }
+        );
+        if (activityRes.ok) {
+          const activities = await activityRes.json();
+          debugData.endpoints.jobactivity = {
+            status: activityRes.status,
+            count: activities.length,
+            items: activities.map((item: any) => ({
+              uuid: item.uuid,
+              activity_type: item.activity_type,
+              timestamp: item.timestamp,
+              description: item.description?.substring(0, 200),
+              staff_name: item.staff_name,
+              all_fields: Object.keys(item)
+            }))
+          };
+        } else {
+          debugData.endpoints.jobactivity = { status: activityRes.status, error: await activityRes.text() };
+        }
+      } catch (e: any) {
+        debugData.endpoints.jobactivity = { error: e.message };
+      }
+
+      // 3. Fetch notes
+      try {
+        const notesRes = await fetch(
+          `https://api.servicem8.com/api_1.0/note.json?%24filter=related_object_uuid%20eq%20'${jobUuid}'&%24orderby=timestamp%20desc&%24top=50`,
+          { headers }
+        );
+        if (notesRes.ok) {
+          const notes = await notesRes.json();
+          debugData.endpoints.notes = {
+            status: notesRes.status,
+            count: notes.length,
+            items: notes.map((item: any) => ({
+              uuid: item.uuid,
+              note: item.note?.substring(0, 200),
+              timestamp: item.timestamp,
+              created_by_staff_name: item.created_by_staff_name,
+              entry_method: item.entry_method,
+              note_type: item.note_type,
+              all_fields: Object.keys(item)
+            }))
+          };
+        } else {
+          debugData.endpoints.notes = { status: notesRes.status, error: await notesRes.text() };
+        }
+      } catch (e: any) {
+        debugData.endpoints.notes = { error: e.message };
+      }
+
+      // 4. Try smslog endpoint (if it exists)
+      try {
+        const smsRes = await fetch(
+          `https://api.servicem8.com/api_1.0/smslog.json?%24filter=job_uuid%20eq%20'${jobUuid}'&%24orderby=timestamp%20desc&%24top=50`,
+          { headers }
+        );
+        if (smsRes.ok) {
+          const smsLogs = await smsRes.json();
+          debugData.endpoints.smslog = {
+            status: smsRes.status,
+            count: smsLogs.length,
+            items: smsLogs
+          };
+        } else {
+          debugData.endpoints.smslog = { status: smsRes.status, error: "Endpoint may not exist or no access" };
+        }
+      } catch (e: any) {
+        debugData.endpoints.smslog = { error: e.message };
+      }
+
+      // 5. Try emaillog endpoint (if it exists)
+      try {
+        const emailRes = await fetch(
+          `https://api.servicem8.com/api_1.0/emaillog.json?%24filter=job_uuid%20eq%20'${jobUuid}'&%24orderby=timestamp%20desc&%24top=50`,
+          { headers }
+        );
+        if (emailRes.ok) {
+          const emailLogs = await emailRes.json();
+          debugData.endpoints.emaillog = {
+            status: emailRes.status,
+            count: emailLogs.length,
+            items: emailLogs
+          };
+        } else {
+          debugData.endpoints.emaillog = { status: emailRes.status, error: "Endpoint may not exist or no access" };
+        }
+      } catch (e: any) {
+        debugData.endpoints.emaillog = { error: e.message };
+      }
+
+      // 6. Try queue endpoint for SMS queue
+      try {
+        const queueRes = await fetch(
+          `https://api.servicem8.com/api_1.0/queue.json?%24top=10`,
+          { headers }
+        );
+        if (queueRes.ok) {
+          const queues = await queueRes.json();
+          debugData.endpoints.queue = {
+            status: queueRes.status,
+            count: queues.length,
+            note: "These are job queues, not message queues"
+          };
+        } else {
+          debugData.endpoints.queue = { status: queueRes.status };
+        }
+      } catch (e: any) {
+        debugData.endpoints.queue = { error: e.message };
+      }
+
+      res.json(debugData);
+    } catch (error: any) {
+      console.error("Debug communications error:", error);
+      res.status(500).json({ error: error.message, debugData });
+    }
+  });
+
+  // Debug endpoint to see ALL feeditems (to understand what types ServiceM8 uses)
+  app.get("/api/debug/all-feeditems", async (req, res) => {
+    try {
+      const token = await getValidOAuthToken();
+      const apiKey = process.env.SERVICEM8_API_KEY;
+
+      if (!token && !apiKey) {
+        return res.status(401).json({ error: "No ServiceM8 credentials" });
+      }
+
+      const headers = token
+        ? { "Authorization": `Bearer ${token.accessToken}`, "Content-Type": "application/json" }
+        : { "X-API-Key": apiKey!, "Content-Type": "application/json" };
+
+      const feedRes = await fetch(
+        `https://api.servicem8.com/api_1.0/feeditem.json?%24orderby=timestamp%20desc&%24top=100`,
+        { headers }
+      );
+
+      if (!feedRes.ok) {
+        return res.status(feedRes.status).json({ error: await feedRes.text() });
+      }
+
+      const feedItems = await feedRes.json();
+
+      // Group by type to see what types exist
+      const typeGroups: Record<string, any[]> = {};
+      for (const item of feedItems) {
+        const type = item.type || 'unknown';
+        if (!typeGroups[type]) typeGroups[type] = [];
+        typeGroups[type].push({
+          uuid: item.uuid,
+          timestamp: item.timestamp,
+          message: item.message?.substring(0, 150),
+          related_object: item.related_object,
+          staff_name: item.staff_name
+        });
+      }
+
+      res.json({
+        totalItems: feedItems.length,
+        uniqueTypes: Object.keys(typeGroups),
+        byType: typeGroups,
+        sampleRawItem: feedItems[0] // Show one complete raw item
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // Fetch Job Activity/Diary - try API key first, fallback to OAuth
@@ -1480,18 +1803,19 @@ async function runAutoSync() {
 
     try {
       // Bulk fetch all data in parallel (including custom fields for staff assignment)
-      const [sm8Jobs, contactMap, companyMap, customFieldMap, notesMap] = await Promise.all([
+      const [sm8Jobs, contactMap, companyMap, customFieldMap, notesMap, clientContactMap] = await Promise.all([
         sm8Client.fetchJobs(),
         sm8Client.fetchAllJobContacts(),
         sm8Client.fetchAllCompanies(),
         sm8Client.fetchAllJobCustomFields(),
-        sm8Client.fetchAllJobNotes()
+        sm8Client.fetchAllJobNotes(),
+        sm8Client.fetchLastClientContact() // NEW: fetch when CLIENT last contacted us
       ]);
-      
+
       for (const sm8Job of sm8Jobs) {
         // Get customer name: prioritize company name, then job contact
         let customerName = "Unknown Customer";
-        
+
         // First try company name (this is the main customer record in ServiceM8)
         if (sm8Job.company_uuid) {
           const companyName = companyMap.get(sm8Job.company_uuid);
@@ -1499,7 +1823,7 @@ async function runAutoSync() {
             customerName = companyName;
           }
         }
-        
+
         // Fall back to job contact name if no company
         if (customerName === "Unknown Customer") {
           const contact = contactMap.get(sm8Job.uuid);
@@ -1507,23 +1831,37 @@ async function runAutoSync() {
             customerName = `${contact.first} ${contact.last}`.trim();
           }
         }
-        
+
         const mappedJob = sm8Client.mapServiceM8JobToInsertJob(sm8Job, customerName, customFieldMap);
-        
-        // Add communication history from email/SMS only
+
+        // Add communication history (any direction - inbound or outbound)
         const lastComm = notesMap.get(sm8Job.uuid);
         if (lastComm) {
           (mappedJob as any).lastCommunicationDate = lastComm.date;
           (mappedJob as any).lastCommunicationType = lastComm.type;
+          (mappedJob as any).lastCommunicationDirection = lastComm.direction;
           const daysSince = Math.floor((Date.now() - lastComm.date.getTime()) / (1000 * 60 * 60 * 24));
           mappedJob.daysSinceLastContact = daysSince;
         } else {
-          // Clear old communication data if no email/SMS found
           (mappedJob as any).lastCommunicationDate = null;
           (mappedJob as any).lastCommunicationType = null;
+          (mappedJob as any).lastCommunicationDirection = null;
           mappedJob.daysSinceLastContact = null;
         }
-        
+
+        // NEW: Add CLIENT contact tracking (inbound only - when client contacted US)
+        const lastClientContact = clientContactMap.get(sm8Job.uuid);
+        if (lastClientContact) {
+          (mappedJob as any).lastClientContactDate = lastClientContact.date;
+          (mappedJob as any).lastClientContactType = lastClientContact.type;
+          const daysSinceClient = Math.floor((Date.now() - lastClientContact.date.getTime()) / (1000 * 60 * 60 * 24));
+          (mappedJob as any).daysSinceClientContact = daysSinceClient;
+        } else {
+          (mappedJob as any).lastClientContactDate = null;
+          (mappedJob as any).lastClientContactType = null;
+          (mappedJob as any).daysSinceClientContact = null;
+        }
+
         await storage.upsertJobByServiceM8Uuid(mappedJob);
         jobsProcessed++;
       }

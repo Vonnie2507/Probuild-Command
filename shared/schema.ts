@@ -56,8 +56,12 @@ export const jobs = pgTable("jobs", {
   syncedAt: timestamp("synced_at"),
   workTypeId: integer("work_type_id"), // References work_types table for dynamic stages
   currentStageId: integer("current_stage_id"), // Current active stage
-  lastCommunicationDate: timestamp("last_communication_date"), // Last email/SMS/call
+  lastCommunicationDate: timestamp("last_communication_date"), // Last email/SMS/call (any direction)
   lastCommunicationType: text("last_communication_type"), // 'email' | 'sms' | 'call' | 'note'
+  lastCommunicationDirection: text("last_communication_direction"), // 'inbound' | 'outbound' | 'unknown'
+  lastClientContactDate: timestamp("last_client_contact_date"), // Last time CLIENT contacted us (inbound only)
+  lastClientContactType: text("last_client_contact_type"), // 'email' | 'sms' | 'call'
+  daysSinceClientContact: integer("days_since_client_contact"), // Days since client last contacted us
   salesStage: text("sales_stage"), // For Quotes Pipeline: 'fresh', 'awaiting_reply', etc.
   badges: text("badges").array(), // ServiceM8 badges like 'Hot Lead', 'VIP', etc.
 });

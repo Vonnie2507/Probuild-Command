@@ -93,6 +93,15 @@ export function JobCard({ job, index }: JobCardProps) {
   const [smsMessage, setSmsMessage] = useState("");
   const [sendingSms, setSendingSms] = useState(false);
   const [loadingContact, setLoadingContact] = useState(false);
+
+  // Email compose state
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [loadingEmailContact, setLoadingEmailContact] = useState(false);
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
@@ -242,9 +251,31 @@ export function JobCard({ job, index }: JobCardProps) {
     }
   }, [smsDialogOpen, job.serviceM8Uuid]);
 
+  // Fetch contact info when email dialog opens
+  useEffect(() => {
+    if (emailDialogOpen && job.serviceM8Uuid) {
+      setLoadingEmailContact(true);
+      fetch(`/api/servicem8/job-contact/${job.serviceM8Uuid}`)
+        .then(res => res.json())
+        .then(data => {
+          setEmailTo(data.email || "");
+        })
+        .catch(err => {
+          console.error("Failed to fetch contact email:", err);
+        })
+        .finally(() => setLoadingEmailContact(false));
+    }
+  }, [emailDialogOpen, job.serviceM8Uuid]);
+
   const handleOpenSmsDialog = () => {
     setSmsMessage("");
     setSmsDialogOpen(true);
+  };
+
+  const handleOpenEmailDialog = () => {
+    setEmailSubject("");
+    setEmailBody("");
+    setEmailDialogOpen(true);
   };
 
   const handleSendSms = async () => {
@@ -270,7 +301,7 @@ export function JobCard({ job, index }: JobCardProps) {
       });
 
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || data.message || "Failed to send SMS");
       }
@@ -279,7 +310,7 @@ export function JobCard({ job, index }: JobCardProps) {
         title: "SMS sent!",
         description: `Message sent to ${smsPhone}`,
       });
-      
+
       setSmsDialogOpen(false);
       setSmsMessage("");
     } catch (error: any) {
@@ -292,7 +323,55 @@ export function JobCard({ job, index }: JobCardProps) {
       setSendingSms(false);
     }
   };
-  
+
+  const handleSendEmail = async () => {
+    if (!emailTo || !emailSubject.trim() || !emailBody.trim()) {
+      toast({
+        title: "Missing information",
+        description: "Please enter an email address, subject, and message",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setSendingEmail(true);
+    try {
+      const response = await fetch("/api/messaging/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: emailTo,
+          subject: emailSubject,
+          body: emailBody,
+          jobUuid: job.serviceM8Uuid
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || "Failed to send email");
+      }
+
+      toast({
+        title: "Email sent!",
+        description: `Email sent to ${emailTo}`,
+      });
+
+      setEmailDialogOpen(false);
+      setEmailSubject("");
+      setEmailBody("");
+    } catch (error: any) {
+      toast({
+        title: "Failed to send email",
+        description: error.message || "Please check your ServiceM8 connection",
+        variant: "destructive"
+      });
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   const getCommIcon = (item: CommunicationItem) => {
     switch (item.type) {
       case 'email': return <Mail className="h-4 w-4 text-purple-500" />;
@@ -388,23 +467,34 @@ export function JobCard({ job, index }: JobCardProps) {
               </p>
               
               <div className="grid grid-cols-2 gap-2 text-[10px] text-muted-foreground">
+                {/* Show CLIENT contact (when they last contacted us) - this is what we care about! */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div className={cn(
                       "flex items-center gap-1.5 px-1.5 py-1 rounded bg-background border cursor-help",
-                      job.daysSinceLastContact > 3 ? "text-red-600 border-red-100 bg-red-50" : "border-border"
+                      (job.daysSinceClientContact ?? job.daysSinceLastContact) > 3
+                        ? "text-red-600 border-red-100 bg-red-50"
+                        : "border-border"
                     )}>
-                      {job.lastCommunicationType === 'email' ? <Mail className="h-3 w-3" /> :
-                       job.lastCommunicationType === 'call' ? <Phone className="h-3 w-3" /> :
-                       job.lastCommunicationType === 'sms' ? <MessageSquare className="h-3 w-3" /> :
+                      {(job.lastClientContactType || job.lastCommunicationType) === 'email' ? <Mail className="h-3 w-3" /> :
+                       (job.lastClientContactType || job.lastCommunicationType) === 'call' ? <Phone className="h-3 w-3" /> :
+                       (job.lastClientContactType || job.lastCommunicationType) === 'sms' ? <MessageSquare className="h-3 w-3" /> :
                        <MessageSquare className="h-3 w-3" />}
-                      <span>{job.daysSinceLastContact}d ago</span>
+                      <span>
+                        {job.daysSinceClientContact !== undefined && job.daysSinceClientContact !== null
+                          ? `Client: ${job.daysSinceClientContact}d ago`
+                          : `${job.daysSinceLastContact}d ago`}
+                      </span>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top">
-                    <p>Last contact: {job.lastCommunicationType === 'email' ? 'Email sent' : 
-                       job.lastCommunicationType === 'call' ? 'Phone call' : 
-                       job.lastCommunicationType === 'sms' ? 'SMS message' : 'Note added'} {job.daysSinceLastContact} days ago</p>
+                    <p>
+                      {job.daysSinceClientContact !== undefined && job.daysSinceClientContact !== null
+                        ? `Client last contacted us: ${job.lastClientContactType || 'message'} ${job.daysSinceClientContact} days ago`
+                        : `Last contact: ${job.lastCommunicationType === 'email' ? 'Email' :
+                           job.lastCommunicationType === 'call' ? 'Phone call' :
+                           job.lastCommunicationType === 'sms' ? 'SMS' : 'Note'} ${job.daysSinceLastContact} days ago`}
+                    </p>
                   </TooltipContent>
                 </Tooltip>
                 
@@ -518,11 +608,26 @@ export function JobCard({ job, index }: JobCardProps) {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-white hover:text-purple-600">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className={cn(
+                      "h-6 w-6 hover:bg-white hover:text-purple-600",
+                      !job.serviceM8Uuid && "opacity-50 cursor-not-allowed"
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (job.serviceM8Uuid) handleOpenEmailDialog();
+                    }}
+                    disabled={!job.serviceM8Uuid}
+                    data-testid={`button-email-${job.id}`}
+                  >
                     <Mail className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top"><p>Send email</p></TooltipContent>
+                <TooltipContent side="top">
+                  <p>{job.serviceM8Uuid ? "Send email" : "No ServiceM8 link"}</p>
+                </TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -937,6 +1042,87 @@ export function JobCard({ job, index }: JobCardProps) {
                 <>
                   <Send className="h-4 w-4 mr-2" />
                   Send SMS
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Compose Dialog */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5 text-purple-500" />
+              Send Email
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email-to">To: {job.customerName}</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="email-to"
+                  type="email"
+                  placeholder="Email address"
+                  value={emailTo}
+                  onChange={(e) => setEmailTo(e.target.value)}
+                  disabled={loadingEmailContact}
+                  data-testid="input-email-to"
+                />
+                {loadingEmailContact && <Loader2 className="h-4 w-4 animate-spin" />}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email-subject">Subject</Label>
+              <Input
+                id="email-subject"
+                type="text"
+                placeholder="Email subject"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                data-testid="input-email-subject"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email-body">Message</Label>
+              <Textarea
+                id="email-body"
+                placeholder="Type your message..."
+                value={emailBody}
+                onChange={(e) => setEmailBody(e.target.value)}
+                rows={6}
+                data-testid="input-email-body"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEmailDialogOpen(false)}
+              disabled={sendingEmail}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSendEmail}
+              disabled={sendingEmail || !emailTo || !emailSubject.trim() || !emailBody.trim()}
+              data-testid="button-send-email"
+            >
+              {sendingEmail ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Send Email
                 </>
               )}
             </Button>
