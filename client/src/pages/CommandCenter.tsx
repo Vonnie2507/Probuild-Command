@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { MOCK_JOBS, Job } from "@/lib/mockData";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Job } from "@/lib/mockData";
 import { useSettings } from "@/lib/settingsContext";
 import { PipelineBoard } from "@/components/PipelineBoard";
 import { ProductionDashboard } from "@/components/ProductionDashboard";
@@ -8,151 +9,188 @@ import { SettingsPanel } from "@/components/SettingsPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Plus, Search, Settings, Users } from "lucide-react";
+import { RefreshCw, Plus, Search, Settings, Users, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { toast } from "sonner";
+import type { SelectJob } from "@shared/schema";
+
+function mapDbJobToJob(dbJob: SelectJob): Job {
+  return {
+    id: String(dbJob.id),
+    jobId: dbJob.jobId || "#N/A",
+    customerName: dbJob.customerName || "Unknown",
+    address: dbJob.address || "",
+    description: dbJob.description || "",
+    quoteValue: dbJob.quoteValue || 0,
+    status: dbJob.status || "new_lead",
+    daysSinceQuoteSent: dbJob.daysSinceQuoteSent || undefined,
+    daysSinceLastContact: dbJob.daysSinceLastContact || 0,
+    assignedStaff: dbJob.assignedStaff || "wayne",
+    lastNote: dbJob.lastNote || "",
+    dateCreated: dbJob.createdAt ? new Date(dbJob.createdAt) : new Date(),
+    urgency: (dbJob.urgency as Job["urgency"]) || "low",
+    lastContactWho: (dbJob.lastContactWho as Job["lastContactWho"]) || "us",
+    dueDate: dbJob.dueDate ? new Date(dbJob.dueDate) : undefined,
+    purchaseOrderStatus: (dbJob.purchaseOrderStatus as Job["purchaseOrderStatus"]) || "none",
+    productionTasks: (dbJob.productionTasks as Job["productionTasks"]) || [],
+    installStage: (dbJob.installStage as Job["installStage"]) || "pending_posts",
+    postInstallDate: dbJob.postInstallDate ? new Date(dbJob.postInstallDate) : undefined,
+    panelInstallDate: dbJob.panelInstallDate ? new Date(dbJob.panelInstallDate) : undefined,
+    tentativePostDate: dbJob.tentativePostDate ? new Date(dbJob.tentativePostDate) : undefined,
+    tentativePanelDate: dbJob.tentativePanelDate ? new Date(dbJob.tentativePanelDate) : undefined,
+    tentativeNotes: dbJob.tentativeNotes || undefined,
+    estimatedProductionDuration: dbJob.estimatedProductionDuration || 7,
+    postInstallDuration: dbJob.postInstallDuration || 6,
+    postInstallCrewSize: dbJob.postInstallCrewSize || 2,
+    panelInstallDuration: dbJob.panelInstallDuration || 8,
+    panelInstallCrewSize: dbJob.panelInstallCrewSize || 2,
+  };
+}
 
 export default function CommandCenter() {
+  const queryClient = useQueryClient();
   const { staff, pipelines, appSettings } = useSettings();
   const [viewMode, setViewMode] = useState<"sales" | "production" | "scheduler">("sales");
-  const [jobs, setJobs] = useState<Job[]>(MOCK_JOBS);
   const [selectedStaff, setSelectedStaff] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const { data: dbJobs = [], isLoading } = useQuery<SelectJob[]>({
+    queryKey: ["/api/jobs"],
+  });
+
+  const jobs: Job[] = dbJobs.map(mapDbJobToJob);
+
+  const updateJobMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<SelectJob> }) => {
+      const res = await fetch(`/api/jobs/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error("Failed to update job");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+    },
+  });
+
+  const syncServiceM8 = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await fetch("/api/sync/servicem8", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Synced ${data.jobsProcessed} jobs from ServiceM8`);
+        queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      } else {
+        toast.error(data.message || "Sync failed");
+      }
+    } catch (error) {
+      toast.error("Failed to sync with ServiceM8");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleJobMove = (jobId: string, newStatus: string) => {
-    setJobs((prev) =>
-      prev.map((job) =>
-        job.id === jobId ? { ...job, status: newStatus } : job
-      )
-    );
+    updateJobMutation.mutate({ id: jobId, updates: { status: newStatus } });
   };
 
   const handleScheduleJob = (jobId: string, type: 'posts' | 'panels', date: Date) => {
-    setJobs((prev) =>
-      prev.map((job) => {
-        if (job.id !== jobId) return job;
-        
-        if (type === 'posts') {
-          return {
-            ...job,
-            postInstallDate: date,
-            installStage: 'posts_scheduled' as const,
-          };
-        } else {
-          return {
-            ...job,
-            panelInstallDate: date,
-            installStage: 'panels_scheduled' as const,
-          };
-        }
-      })
-    );
+    if (type === 'posts') {
+      updateJobMutation.mutate({ 
+        id: jobId, 
+        updates: { postInstallDate: date, installStage: 'posts_scheduled' } 
+      });
+    } else {
+      updateJobMutation.mutate({ 
+        id: jobId, 
+        updates: { panelInstallDate: date, installStage: 'panels_scheduled' } 
+      });
+    }
   };
 
   const handleUnscheduleJob = (jobId: string, type: 'posts' | 'panels') => {
-    setJobs((prev) =>
-      prev.map((job) => {
-        if (job.id !== jobId) return job;
-        
-        if (type === 'posts') {
-          return {
-            ...job,
-            postInstallDate: undefined,
-            installStage: 'pending_posts' as const,
-          };
-        } else {
-          return {
-            ...job,
-            panelInstallDate: undefined,
-            installStage: 'pending_panels' as const,
-          };
-        }
-      })
-    );
+    if (type === 'posts') {
+      updateJobMutation.mutate({ 
+        id: jobId, 
+        updates: { postInstallDate: null, installStage: 'pending_posts' } 
+      });
+    } else {
+      updateJobMutation.mutate({ 
+        id: jobId, 
+        updates: { panelInstallDate: null, installStage: 'pending_panels' } 
+      });
+    }
   };
 
   const handleTentativeSchedule = (jobId: string, type: 'posts' | 'panels', date: Date) => {
-    setJobs((prev) =>
-      prev.map((job) => {
-        if (job.id !== jobId) return job;
-        
-        if (type === 'posts') {
-          return {
-            ...job,
-            tentativePostDate: date,
-            installStage: 'tentative_posts' as const,
-          };
-        } else {
-          return {
-            ...job,
-            tentativePanelDate: date,
-            installStage: 'tentative_panels' as const,
-          };
-        }
-      })
-    );
+    if (type === 'posts') {
+      updateJobMutation.mutate({ 
+        id: jobId, 
+        updates: { tentativePostDate: date, installStage: 'tentative_posts' } 
+      });
+    } else {
+      updateJobMutation.mutate({ 
+        id: jobId, 
+        updates: { tentativePanelDate: date, installStage: 'tentative_panels' } 
+      });
+    }
   };
 
   const handleUnscheduleTentative = (jobId: string, type: 'posts' | 'panels') => {
-    setJobs((prev) =>
-      prev.map((job) => {
-        if (job.id !== jobId) return job;
-        
-        if (type === 'posts') {
-          return {
-            ...job,
-            tentativePostDate: undefined,
-            installStage: 'pending_posts' as const,
-          };
-        } else {
-          return {
-            ...job,
-            tentativePanelDate: undefined,
-            installStage: 'pending_panels' as const,
-          };
-        }
-      })
-    );
+    if (type === 'posts') {
+      updateJobMutation.mutate({ 
+        id: jobId, 
+        updates: { tentativePostDate: null, installStage: 'pending_posts' } 
+      });
+    } else {
+      updateJobMutation.mutate({ 
+        id: jobId, 
+        updates: { tentativePanelDate: null, installStage: 'pending_panels' } 
+      });
+    }
   };
 
   const handleConfirmTentative = (jobId: string, type: 'posts' | 'panels') => {
+    const job = jobs.find(j => j.id === jobId);
+    if (!job) return;
+    
     const now = new Date();
     const twoWeeksFromNow = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
     
-    setJobs((prev) =>
-      prev.map((job) => {
-        if (job.id !== jobId) return job;
-        
-        if (type === 'posts' && job.tentativePostDate) {
-          // Enforce 2-week guardrail
-          if (job.tentativePostDate > twoWeeksFromNow) {
-            console.warn('Cannot confirm: date is more than 2 weeks out');
-            return job;
-          }
-          return {
-            ...job,
-            postInstallDate: job.tentativePostDate,
-            tentativePostDate: undefined,
-            installStage: 'posts_scheduled' as const,
-          };
-        } else if (type === 'panels' && job.tentativePanelDate) {
-          // Enforce 2-week guardrail
-          if (job.tentativePanelDate > twoWeeksFromNow) {
-            console.warn('Cannot confirm: date is more than 2 weeks out');
-            return job;
-          }
-          return {
-            ...job,
-            panelInstallDate: job.tentativePanelDate,
-            tentativePanelDate: undefined,
-            installStage: 'panels_scheduled' as const,
-          };
-        }
-        return job;
-      })
-    );
+    if (type === 'posts' && job.tentativePostDate) {
+      if (job.tentativePostDate > twoWeeksFromNow) {
+        toast.error('Cannot confirm: date is more than 2 weeks out');
+        return;
+      }
+      updateJobMutation.mutate({ 
+        id: jobId, 
+        updates: { 
+          postInstallDate: job.tentativePostDate, 
+          tentativePostDate: null,
+          installStage: 'posts_scheduled' 
+        } 
+      });
+    } else if (type === 'panels' && job.tentativePanelDate) {
+      if (job.tentativePanelDate > twoWeeksFromNow) {
+        toast.error('Cannot confirm: date is more than 2 weeks out');
+        return;
+      }
+      updateJobMutation.mutate({ 
+        id: jobId, 
+        updates: { 
+          panelInstallDate: job.tentativePanelDate, 
+          tentativePanelDate: null,
+          installStage: 'panels_scheduled' 
+        } 
+      });
+    }
   };
 
   const filteredJobs = jobs.filter((job) => {
@@ -284,9 +322,20 @@ export default function CommandCenter() {
                 <TabsTrigger value="quotes" className="px-6 data-[state=active]:bg-background data-[state=active]:shadow-sm" data-testid="quotes-tab">QUOTES PIPELINE</TabsTrigger>
               </TabsList>
               
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" data-testid="sync-btn">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Sync ServiceM8
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-muted-foreground hover:text-foreground" 
+                data-testid="sync-btn"
+                onClick={syncServiceM8}
+                disabled={isSyncing}
+              >
+                {isSyncing ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                {isSyncing ? "Syncing..." : "Sync ServiceM8"}
               </Button>
             </div>
 

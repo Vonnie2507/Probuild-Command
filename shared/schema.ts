@@ -45,7 +45,7 @@ export const insertJobSchema = createInsertSchema(jobs).omit({
 });
 
 export type InsertJob = z.infer<typeof insertJobSchema>;
-export type Job = typeof jobs.$inferSelect;
+export type SelectJob = typeof jobs.$inferSelect;
 
 // Staff Members Table
 export const staff = pgTable("staff", {
