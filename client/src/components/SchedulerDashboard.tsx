@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Job, PIPELINES, getDailyInstallCapacity, STAFF_MEMBERS } from "@/lib/mockData";
+import { Job } from "@/lib/mockData";
+import { useSettings } from "@/lib/settingsContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,7 @@ interface SchedulerDashboardProps {
 }
 
 export function SchedulerDashboard({ jobs, onScheduleJob }: SchedulerDashboardProps) {
+  const { staff, pipelines, getDailyInstallCapacity } = useSettings();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [scheduleModal, setScheduleModal] = useState<{
     open: boolean;
@@ -26,7 +28,8 @@ export function SchedulerDashboard({ jobs, onScheduleJob }: SchedulerDashboardPr
   
   // Capacity Logic
   const dailyTotalHours = getDailyInstallCapacity();
-  const availableTeams = 2;
+  const installStaff = staff.filter(s => s.role === 'install' && s.active && s.id !== 'all');
+  const availableTeams = Math.ceil(installStaff.length / 2);
 
   // Mock Production Capacity (Next 6 Weeks)
   const productionCapacity = [
@@ -39,7 +42,7 @@ export function SchedulerDashboard({ jobs, onScheduleJob }: SchedulerDashboardPr
   ];
 
   // Queues
-  const pendingPostInstall = jobs.filter(j => j.installStage === 'pending_posts' && PIPELINES.production.some(p => p.id === j.status));
+  const pendingPostInstall = jobs.filter(j => j.installStage === 'pending_posts' && pipelines.production.some(p => p.id === j.status));
   const pendingPanelInstall = jobs.filter(j => j.installStage === 'pending_panels');
   
   // Calendar Logic
@@ -187,7 +190,7 @@ export function SchedulerDashboard({ jobs, onScheduleJob }: SchedulerDashboardPr
                 <span className="text-sm font-bold">{availableTeams} Teams</span>
             </div>
             <div className="mt-2 text-[10px] text-muted-foreground flex gap-1 flex-wrap">
-                {STAFF_MEMBERS.filter(s => s.role === 'install').map(s => (
+                {installStaff.map(s => (
                     <span key={s.id} className={cn("px-1.5 py-0.5 rounded text-white", s.color)}>{s.name.split(' ')[0]}</span>
                 ))}
             </div>

@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { MOCK_JOBS, PIPELINES, STAFF_MEMBERS, Job, StaffMember } from "@/lib/mockData";
+import { MOCK_JOBS, Job } from "@/lib/mockData";
+import { useSettings } from "@/lib/settingsContext";
 import { PipelineBoard } from "@/components/PipelineBoard";
 import { ProductionDashboard } from "@/components/ProductionDashboard";
 import { SchedulerDashboard } from "@/components/SchedulerDashboard";
-import { StaffManagement } from "@/components/StaffManagement";
+import { SettingsPanel } from "@/components/SettingsPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -13,12 +14,12 @@ import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export default function CommandCenter() {
+  const { staff, pipelines, appSettings } = useSettings();
   const [viewMode, setViewMode] = useState<"sales" | "production" | "scheduler">("sales");
   const [jobs, setJobs] = useState<Job[]>(MOCK_JOBS);
-  const [staffMembers, setStaffMembers] = useState<StaffMember[]>(STAFF_MEMBERS);
   const [selectedStaff, setSelectedStaff] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [staffDialogOpen, setStaffDialogOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const handleJobMove = (jobId: string, newStatus: string) => {
     setJobs((prev) =>
@@ -50,20 +51,6 @@ export default function CommandCenter() {
     );
   };
 
-  const handleUpdateStaff = (updatedStaff: StaffMember) => {
-    setStaffMembers((prev) =>
-      prev.map((s) => (s.id === updatedStaff.id ? updatedStaff : s))
-    );
-  };
-
-  const handleAddStaff = (newStaff: StaffMember) => {
-    setStaffMembers((prev) => [...prev, newStaff]);
-  };
-
-  const handleDeleteStaff = (staffId: string) => {
-    setStaffMembers((prev) => prev.filter((s) => s.id !== staffId));
-  };
-
   const filteredJobs = jobs.filter((job) => {
     const staffMatch = selectedStaff === "all" || job.assignedStaff === selectedStaff;
     const searchMatch = 
@@ -83,7 +70,7 @@ export default function CommandCenter() {
               <span className="font-heading font-bold text-primary-foreground text-lg">P</span>
             </div>
             <div>
-              <h1 className="font-heading text-xl leading-none">PROBUILD</h1>
+              <h1 className="font-heading text-xl leading-none">{appSettings.companyName}</h1>
               <p className="text-[10px] text-muted-foreground font-mono tracking-widest uppercase">Command Center</p>
             </div>
           </div>
@@ -93,6 +80,7 @@ export default function CommandCenter() {
           <div className="flex bg-muted p-1 rounded-md">
             <button
               onClick={() => setViewMode("sales")}
+              data-testid="view-mode-sales"
               className={cn(
                 "px-4 py-1.5 text-xs font-bold uppercase tracking-wide rounded-sm transition-all",
                 viewMode === "sales" 
@@ -104,6 +92,7 @@ export default function CommandCenter() {
             </button>
             <button
               onClick={() => setViewMode("production")}
+              data-testid="view-mode-production"
               className={cn(
                 "px-4 py-1.5 text-xs font-bold uppercase tracking-wide rounded-sm transition-all",
                 viewMode === "production" 
@@ -115,6 +104,7 @@ export default function CommandCenter() {
             </button>
             <button
               onClick={() => setViewMode("scheduler")}
+              data-testid="view-mode-scheduler"
               className={cn(
                 "px-4 py-1.5 text-xs font-bold uppercase tracking-wide rounded-sm transition-all",
                 viewMode === "scheduler" 
@@ -135,49 +125,45 @@ export default function CommandCenter() {
               className="pl-9 h-9 bg-muted/50 border-transparent focus:bg-background focus:border-primary transition-colors"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              data-testid="search-input"
             />
           </div>
 
           <div className="flex items-center gap-2 border-l pl-4">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Filter Staff:</span>
             <Select value={selectedStaff} onValueChange={setSelectedStaff}>
-              <SelectTrigger className="w-[180px] h-9">
+              <SelectTrigger className="w-[180px] h-9" data-testid="staff-filter">
                 <SelectValue placeholder="Select Staff" />
               </SelectTrigger>
               <SelectContent>
-                {STAFF_MEMBERS.map((staff) => (
-                  <SelectItem key={staff.id} value={staff.id}>
-                    {staff.name}
+                {staff.filter(s => s.active).map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          <Dialog open={staffDialogOpen} onOpenChange={setStaffDialogOpen}>
+          <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" data-testid="manage-staff-btn">
-                <Users className="h-4 w-4 mr-2" />
-                Staff
+              <Button variant="outline" size="sm" data-testid="settings-btn">
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+            <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Staff Management
+                  <Settings className="h-5 w-5" />
+                  Settings
                 </DialogTitle>
               </DialogHeader>
-              <StaffManagement 
-                staff={staffMembers}
-                onUpdateStaff={handleUpdateStaff}
-                onAddStaff={handleAddStaff}
-                onDeleteStaff={handleDeleteStaff}
-              />
+              <SettingsPanel />
             </DialogContent>
           </Dialog>
 
-          <Button size="sm" className="bg-primary hover:bg-primary/90">
+          <Button size="sm" className="bg-primary hover:bg-primary/90" data-testid="new-job-btn">
             <Plus className="h-4 w-4 mr-2" />
             New Job
           </Button>
@@ -190,11 +176,11 @@ export default function CommandCenter() {
           <Tabs defaultValue="leads" className="h-full flex flex-col">
             <div className="flex items-center justify-between mb-4 shrink-0">
               <TabsList className="h-10 bg-muted/50 p-1">
-                <TabsTrigger value="leads" className="px-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">LEADS PIPELINE</TabsTrigger>
-                <TabsTrigger value="quotes" className="px-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">QUOTES PIPELINE</TabsTrigger>
+                <TabsTrigger value="leads" className="px-6 data-[state=active]:bg-background data-[state=active]:shadow-sm" data-testid="leads-tab">LEADS PIPELINE</TabsTrigger>
+                <TabsTrigger value="quotes" className="px-6 data-[state=active]:bg-background data-[state=active]:shadow-sm" data-testid="quotes-tab">QUOTES PIPELINE</TabsTrigger>
               </TabsList>
               
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" data-testid="sync-btn">
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Sync ServiceM8
               </Button>
@@ -202,7 +188,7 @@ export default function CommandCenter() {
 
             <TabsContent value="leads" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
                <PipelineBoard 
-                  columns={PIPELINES.leads} 
+                  columns={pipelines.leads} 
                   jobs={filteredJobs} 
                   onJobMove={handleJobMove} 
                />
@@ -210,7 +196,7 @@ export default function CommandCenter() {
             
             <TabsContent value="quotes" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
               <PipelineBoard 
-                  columns={PIPELINES.quotes} 
+                  columns={pipelines.quotes} 
                   jobs={filteredJobs} 
                   onJobMove={handleJobMove} 
                />
