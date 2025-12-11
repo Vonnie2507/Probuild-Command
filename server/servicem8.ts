@@ -444,16 +444,16 @@ export class ServiceM8Client {
     let { lifecyclePhase, schedulerStage, appStatus } = this.mapServiceM8Status(sm8Job.status);
     
     // For Quote phase jobs:
-    // - Only show in sales pipeline if ServiceM8 status is "Quote" AND quote_sent=true
-    // - Terminal statuses (unsuccessful/complete) keep their status
-    // - Jobs without quote_sent get "quote_draft" status (not shown in sales pipeline)
+    // - Jobs with quote_sent=true go to "quote_sent" column
+    // - Jobs without quote sent go to "new_lead" column
+    // - Terminal statuses (unsuccessful/complete) keep their status and are excluded
     if (lifecyclePhase === 'quote' && appStatus !== 'unsuccessful') {
       if (hasQuoteSent) {
         schedulerStage = 'quotes_sent';
         appStatus = 'quote_sent';
       } else {
-        // No quote sent yet - mark as draft (won't appear in quote_sent column)
-        appStatus = 'quote_draft';
+        // No quote sent yet - this is a new lead
+        appStatus = 'new_lead';
       }
     }
 
