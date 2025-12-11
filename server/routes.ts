@@ -495,6 +495,54 @@ export async function registerRoutes(
     }
   });
 
+  // Debug endpoint to check raw job data from ServiceM8
+  app.get("/api/servicem8/raw-job/:jobId", async (req, res) => {
+    try {
+      const token = await getValidOAuthToken();
+      if (!token) {
+        return res.status(401).json({ error: "Not connected to ServiceM8 OAuth." });
+      }
+
+      const { jobId } = req.params;
+      // Find job by generated_job_id
+      const response = await fetch(
+        `https://api.servicem8.com/api_1.0/job.json?%24filter=generated_job_id%20eq%20'${jobId}'`,
+        {
+          headers: {
+            "Authorization": `Bearer ${token.accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return res.status(response.status).json({ error: errorText });
+      }
+
+      const jobs = await response.json();
+      if (jobs.length === 0) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+      
+      // Return raw job with quote fields highlighted
+      const job = jobs[0];
+      res.json({
+        generated_job_id: job.generated_job_id,
+        status: job.status,
+        quote_date: job.quote_date,
+        quote_sent: job.quote_sent,
+        edit_date: job.edit_date,
+        date: job.date,
+        completion_date: job.completion_date,
+        all_fields: job
+      });
+    } catch (error: any) {
+      console.error("Error fetching raw job:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Fetch combined job communication history (activities + notes)
   app.get("/api/servicem8/job-history/:jobUuid", async (req, res) => {
     try {

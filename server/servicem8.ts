@@ -13,7 +13,8 @@ interface ServiceM8Job {
   company_uuid: string;
   queue_uuid: string;
   quote_date: string;
-  quote_sent: string;
+  quote_sent: boolean;
+  quote_sent_stamp: string;
   badges: string;
   [key: string]: any;
 }
@@ -282,16 +283,19 @@ export class ServiceM8Client {
 
     // Calculate days since quote was sent
     let daysSinceQuoteSent: number | null = null;
-    // quote_sent is a timestamp like "2025-11-26 10:30:00" when quote was sent
-    // or empty/"" if no quote has been sent yet
-    const quoteSentValue = sm8Job.quote_sent ? String(sm8Job.quote_sent).trim() : '';
-    if (quoteSentValue && quoteSentValue !== '' && quoteSentValue !== '0') {
+    // ServiceM8 uses quote_sent_stamp for the actual timestamp when quote was emailed
+    // quote_sent is just a boolean, quote_date is when quote was created
+    const quoteSentStamp = sm8Job.quote_sent_stamp ? String(sm8Job.quote_sent_stamp).trim() : '';
+    const quoteDateValue = sm8Job.quote_date ? String(sm8Job.quote_date).trim() : '';
+    
+    // Prefer quote_sent_stamp (when actually sent), fallback to quote_date (when created)
+    const quoteTimestamp = (quoteSentStamp && quoteSentStamp !== '' && quoteSentStamp !== '0000-00-00 00:00:00')
+      ? quoteSentStamp 
+      : (quoteDateValue && quoteDateValue !== '' && quoteDateValue !== '0000-00-00 00:00:00' ? quoteDateValue : '');
+    
+    if (quoteTimestamp) {
       try {
-        // Debug first few jobs
-        if (sm8Job.generated_job_id && parseInt(sm8Job.generated_job_id) <= 10) {
-          console.log(`[QuoteSent] Job ${sm8Job.generated_job_id}: quote_sent="${quoteSentValue}"`);
-        }
-        const quoteSentDate = new Date(quoteSentValue.replace(' ', 'T'));
+        const quoteSentDate = new Date(quoteTimestamp.replace(' ', 'T'));
         if (!isNaN(quoteSentDate.getTime())) {
           const now = new Date();
           const diffTime = now.getTime() - quoteSentDate.getTime();
