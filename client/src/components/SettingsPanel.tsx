@@ -632,7 +632,8 @@ function GeneralSettings() {
   };
 
   const handleConnectServiceM8 = () => {
-    window.location.href = "/api/auth/servicem8/login";
+    // Use window.location.assign to bypass SPA router and hit Express directly
+    window.location.assign("/connect/servicem8");
   };
 
   const handleSave = () => {
